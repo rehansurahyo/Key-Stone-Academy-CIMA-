@@ -1,0 +1,120 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "../vendor/shadcn-tailwind-4.13.0.css";
+
+:root {
+  --background: #ffffff; --foreground: #162232; --card: #ffffff; --card-foreground: #162232;
+  --popover: #ffffff; --popover-foreground: #162232; --primary: #0067a3; --primary-foreground: #ffffff;
+  --secondary: #e8eef4; --secondary-foreground: #0067a3; --muted: #f1f5f8; --muted-foreground: #5f6f7f;
+  --accent: #dce8f1; --accent-foreground: #0067a3; --destructive: #a53636; --border: #d1d5db;
+  --input: #cbd5e1; --ring: #0067a3; --radius: 0.25rem;
+}
+@theme inline {
+  --color-background: var(--background); --color-foreground: var(--foreground); --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground); --color-popover: var(--popover); --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary); --color-primary-foreground: var(--primary-foreground); --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground); --color-muted: var(--muted); --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent); --color-accent-foreground: var(--accent-foreground); --color-destructive: var(--destructive);
+  --color-border: var(--border); --color-input: var(--input); --color-ring: var(--ring);
+  --color-sidebar: var(--sidebar, #0b2545); --color-sidebar-foreground: var(--sidebar-foreground, #cbd5e1);
+  --color-sidebar-primary: var(--sidebar-primary, #2563eb); --color-sidebar-primary-foreground: var(--sidebar-primary-foreground, #ffffff);
+  --color-sidebar-accent: var(--sidebar-accent, #163858); --color-sidebar-accent-foreground: var(--sidebar-accent-foreground, #ffffff);
+  --color-sidebar-border: var(--sidebar-border, #24415e); --color-sidebar-ring: var(--sidebar-ring, #60a5fa);
+  --radius-sm: 2px; --radius-md: 3px; --radius-lg: 4px; --radius-xl: 6px; --font-sans: Arial, "Segoe UI", sans-serif;
+}
+* { box-sizing: border-box; }
+html, body {
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+}
+body {
+  margin: 0;
+  padding: 0;
+  background: #f8fafc;
+  color: var(--foreground);
+  font-family: Arial, "Segoe UI", sans-serif;
+  overflow: hidden;
+}
+button, select, textarea { font: inherit; }
+button { cursor: pointer; }
+button:disabled { cursor: not-allowed; }
+.exam-editor { min-height: 100%; outline: none; }
+.ProseMirror { min-height: 100%; outline: none; }
+.exam-editor p { margin: 0 0 .7rem; }
+.exam-editor h2 { margin: .9rem 0 .55rem; font-size: 1.12rem; font-weight: 700; color: #0b2545; }
+.exam-editor ul { margin: .4rem 0 .8rem 1.4rem; list-style: disc; }
+.exam-editor ol { margin: .4rem 0 .8rem 1.4rem; list-style: decimal; }
+.exam-editor table { width: 100%; margin: .8rem 0; border-collapse: collapse; table-layout: fixed; }
+.exam-editor th, .exam-editor td { min-width: 70px; border: 1px solid #8795a5; padding: .45rem; vertical-align: top; position: relative; }
+.exam-editor th { background: #e8eef4; font-weight: 700; }
+.exam-editor .selectedCell::after { content: ""; position: absolute; inset: 0; pointer-events: none; background: rgba(58, 122, 176, .18); }
+.exam-editor > :first-child { margin-top: 0; }
+.viewer-button { display: inline-flex; height: 30px; align-items: center; gap: 5px; border: 1px solid #aab4bf; background: white; padding: 0 9px; font-size: 12px; font-weight: 600; color: #263b51; box-shadow: 0 1px 1px rgba(0,0,0,.08); }
+.viewer-button:hover { background: #e9eff4; }
+.viewer-button:disabled { opacity: .4; }
+.calc-pill {
+  height: 24px;
+  min-width: 42px;
+  border: 1.5px solid #10161b;
+  border-radius: 999px;
+  box-shadow: inset 0 1px 1px rgba(255,255,255,.42), 0 1.5px 0 #080b0e;
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+.calc-key {
+  height: 27px;
+  border: 1.5px solid #0b0f13;
+  border-radius: 999px;
+  box-shadow: inset 0 1px 1px rgba(255,255,255,.3), 0 1.5px 0 #080b0e;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1;
+  text-transform: uppercase;
+}
+.calc-key:active, .calc-pill:active { transform: translateY(1.5px); box-shadow: inset 0 1px 2px rgba(0,0,0,.35); }
+.calc-number { background: linear-gradient(#f4f6f7, #bfc6cb); color: #111820; }
+.calc-operator { background: linear-gradient(#8497a6, #54636f); color: #fff; }
+.calc-function { background: linear-gradient(#66737d, #3f4951); color: #fff; }
+.calc-danger { background: linear-gradient(#db7b72, #aa4d46); color: #fff; }
+.calc-enter { grid-row: span 1; background: linear-gradient(#80b2d3, #427ca4); color: #071d2d; }
+.calc-light { background: linear-gradient(#d9dee2, #aeb7be); color: #17212a; }
+
+.table-scroll::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+.table-scroll::-webkit-scrollbar-track {
+  background: #f1f5f9;
+}
+.table-scroll::-webkit-scrollbar-thumb {
+  background: #94a3b8;
+  border-radius: 3px;
+}
+.table-scroll::-webkit-scrollbar-thumb:hover {
+  background: #64748b;
+}
+/* Hide Next.js dev indicators and overlays */
+nextjs-portal,
+div[data-nextjs-toast-wrapper],
+#__next-build-watcher,
+#next-logo {
+  display: none !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+  visibility: hidden !important;
+}
+
+/* Touch-friendly horizontal scrolling */
+.touch-scroll {
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+}
+
+@media (max-width: 640px) {
+  .exam-editor {
+    font-size: 14px;
+    line-height: 1.5;
+  }
+}

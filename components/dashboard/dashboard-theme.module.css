@@ -1,0 +1,64 @@
+.shell {
+  --sidebar: #0b2545;
+  --sidebar-foreground: #cbd5e1;
+  --sidebar-primary: #2563eb;
+  --sidebar-primary-foreground: #fff;
+  --sidebar-accent: #163858;
+  --sidebar-accent-foreground: #fff;
+  --sidebar-border: #24415e;
+  --sidebar-ring: #60a5fa;
+  --border: #e2e8f0;
+  --foreground: #334155;
+  --muted: #f8fafc;
+  --accent: #eff6ff;
+  --accent-foreground: #1d4ed8;
+  font-family: "Segoe UI", Arial, sans-serif;
+}
+
+/* Scoped to staff pages: the Pearson exam workspace retains its own styling. */
+.shell [data-slot="table-row"] {
+  border-color: #e2e8f0;
+}
+
+/* Paint the actual panel, including its mobile portal, independently of the
+   shared sidebar utilities. This also prevents a missing token washing it out. */
+.sidebar,
+.sidebar [data-slot="sidebar-inner"] {
+  background-color: #0b2545;
+  color: #cbd5e1;
+}
+
+.sidebar [data-slot="sidebar-content"] {
+  scrollbar-width: thin;
+  scrollbar-color: #31506e #0b2545;
+}
+
+.sidebar [data-slot="sidebar-content"]::-webkit-scrollbar { width: 4px; }
+.sidebar [data-slot="sidebar-content"]::-webkit-scrollbar-track { background: #0b2545; }
+.sidebar [data-slot="sidebar-content"]::-webkit-scrollbar-thumb { background: #31506e; border-radius: 4px; }
+
+.shell [data-slot="table-head"] {
+  height: 46px;
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.055em;
+  text-transform: uppercase;
+}
+
+.shell [data-slot="table-cell"] {
+  font-size: 13px;
+}
+
+.shell [data-slot="table-body"] [data-slot="table-row"]:hover {
+  background: #f8fafc;
+}
+
+.scrollArea {
+  scrollbar-color: #cbd5e1 #f4f6f9;
+  scrollbar-width: thin;
+}
+
+.scrollArea::-webkit-scrollbar { width: 7px; }
+.scrollArea::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+.scrollArea::-webkit-scrollbar-track { background: #f4f6f9; }

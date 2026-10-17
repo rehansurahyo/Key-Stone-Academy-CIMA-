@@ -1,0 +1,9 @@
+{
+  "name": "keystone-local-verification",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@electric-sql/pglite": "^0.5.8",
+    "happy-dom": "^20.14.5"
+  }
+}

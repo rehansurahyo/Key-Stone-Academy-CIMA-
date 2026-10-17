@@ -1,0 +1,19 @@
+# Ship application source only; never upload local credentials or QA artifacts.
+.env*
+.git
+.next
+node_modules
+.pnpm-store
+.agents
+.codex
+.sites-runtime
+.wrangler
+.vinext
+test-runtime
+coverage
+outputs
+work
+site-checkout
+dist
+*.tsbuildinfo
+*-debug.log*
