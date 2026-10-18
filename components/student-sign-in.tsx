@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useState } from "react";
+import Link from "next/link";
 import { Loader2, LockKeyhole } from "lucide-react";
 import { FreeTrialDialog } from "@/components/free-trial-dialog";
 
@@ -59,7 +60,15 @@ export function StudentSignIn({
           </label>
 
           <label className="block text-[13px] font-semibold text-slate-700">
-            Password
+            <div className="flex items-center justify-between">
+              <span>Password</span>
+              <Link
+                href="/forgot-password"
+                className="text-[12px] font-medium text-[#0067A3] hover:underline"
+              >
+                Forgot password?
+              </Link>
+            </div>
             <input
               data-testid="student-password"
               type="password"
