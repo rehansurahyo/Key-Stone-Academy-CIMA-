@@ -1,11 +1,15 @@
 import { z } from "zod";
 import { apiError, checkOrigin, DashboardError, requireStaff } from "@/lib/dashboard/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH } from "@/lib/password-policy";
 
 const updateUserSchema = z.object({
   user_id: z.string().uuid(),
   email: z.string().trim().email().max(254).optional(),
-  password: z.string().min(12).max(128).optional(),
+  password: z.string()
+    .min(PASSWORD_MIN_LENGTH, `Password must contain at least ${PASSWORD_MIN_LENGTH} characters.`)
+    .max(PASSWORD_MAX_LENGTH, `Password must contain no more than ${PASSWORD_MAX_LENGTH} characters.`)
+    .optional(),
 }).strict().refine(value => Boolean(value.email || value.password), "Enter a new email address or password.");
 
 export async function PATCH(request: Request) {

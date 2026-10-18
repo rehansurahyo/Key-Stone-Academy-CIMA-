@@ -1,8 +1,8 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import {
   AlertCircle,
   ArrowLeft,
@@ -14,13 +14,17 @@ import {
   LockKeyhole,
 } from "lucide-react";
 import { createClient, isSupabaseConfigured } from "@/lib/supabase/client";
+import { clearPasswordRecovery, getPasswordResetLoginPath, PasswordRecoveryError, updateRecoveryPassword, verifyPasswordRecovery } from "@/lib/password-recovery";
+import { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH, passwordLengthError } from "@/lib/password-policy";
 
 export function ResetPasswordForm() {
   const router = useRouter();
-  const searchParams = useSearchParams();
 
   const [verifying, setVerifying] = useState(true);
   const [initError, setInitError] = useState<string | null>(null);
+  const recoveryUserId = useRef<string | null>(null);
+  const submittingRef = useRef(false);
+  const [loginPath, setLoginPath] = useState<"/staff/login" | "/student/login">("/student/login");
 
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -28,23 +32,19 @@ export function ResetPasswordForm() {
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+  const [passwordUpdated, setPasswordUpdated] = useState(false);
   const [countdown, setCountdown] = useState(3);
 
   useEffect(() => {
     let isMounted = true;
     const verifyRecovery = async () => {
       if (!isSupabaseConfigured) throw new Error("Supabase environment variables are missing.");
-      const hashParams = new URLSearchParams(window.location.hash.substring(1));
-      if (searchParams.get("error") || hashParams.get("error")) {
-        throw new Error(searchParams.get("error_description") || hashParams.get("error_description") || "The password reset link is invalid or has expired.");
-      }
-      // The SSR browser client exchanges the code during initialization.
-      // Await it rather than consuming the one-use verifier a second time.
-      const { data, error } = await createClient().auth.getSession();
-      if (error) throw error;
-      if (!data.session) {
-        throw new Error("No active password reset session found. Please request a new link and open it in the same browser and device.");
-      }
+      const client = createClient();
+      const session = await verifyPasswordRecovery(client);
+      const destination = await getPasswordResetLoginPath(client, session.user.id);
+      if (!isMounted) return;
+      recoveryUserId.current = session.user.id;
+      setLoginPath(destination);
     };
     void verifyRecovery().then(() => {
       if (!isMounted) return;
@@ -52,6 +52,7 @@ export function ResetPasswordForm() {
       setVerifying(false);
     }).catch(err => {
       if (!isMounted) return;
+      setLoginPath(window.location.hostname.startsWith("mocksadmin.") ? "/staff/login" : "/student/login");
       setInitError(err instanceof Error ? err.message : "Unable to verify the password reset session.");
       setVerifying(false);
     });
@@ -59,30 +60,44 @@ export function ResetPasswordForm() {
     return () => {
       isMounted = false;
     };
-  }, [searchParams]);
+  }, []);
 
   // Handle countdown redirect on success
   useEffect(() => {
     if (!success) return;
-    const timer = setInterval(() => {
-      setCountdown(prev => {
-        if (prev <= 1) {
-          clearInterval(timer);
-          router.push("/student/login");
-          return 0;
-        }
-        return prev - 1;
-      });
-    }, 1000);
-    return () => clearInterval(timer);
-  }, [success, router]);
+    const timer = setInterval(() => setCountdown(prev => Math.max(0, prev - 1)), 1000);
+    const redirect = setTimeout(() => router.replace(loginPath), 3000);
+    return () => { clearInterval(timer); clearTimeout(redirect); };
+  }, [success, router, loginPath]);
+
+  const completeSignOut = async () => {
+    try {
+      const client = createClient();
+      const current = await client.auth.getSession();
+      if (current.error) throw current.error;
+      if (current.data.session && current.data.session.user.id !== recoveryUserId.current) {
+        setFormError("Your password has been updated, but another account is now signed in. Sign out of that account first, then retry sign out here.");
+        return;
+      }
+      const { error } = await client.auth.signOut({ scope: "local" });
+      if (error) throw error;
+      const remaining = await client.auth.getSession();
+      if (remaining.error || remaining.data.session) throw new Error("The recovery session is still active.");
+      setFormError(null);
+      setSuccess(true);
+    } catch {
+      setFormError("Your password has been updated, but we could not finish signing out. Retry sign out before signing in with your new password.");
+    }
+  };
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (submittingRef.current || passwordUpdated) return;
     setFormError(null);
 
-    if (password.length < 6) {
-      setFormError("Password must be at least 6 characters long.");
+    const lengthError = passwordLengthError(password);
+    if (lengthError) {
+      setFormError(lengthError);
       return;
     }
 
@@ -92,24 +107,33 @@ export function ResetPasswordForm() {
     }
 
     setSubmitting(true);
+    submittingRef.current = true;
 
     try {
       const supabase = createClient();
-      const { error: updateError } = await supabase.auth.updateUser({
-        password,
-      });
-
-      if (updateError) {
-        setFormError(updateError.message || "Unable to update password. Please try again.");
-      } else {
-        setSuccess(true);
+      // The mutation itself is bound to the verified recovery token, not the
+      // shared cookie session that another tab may change while we're typing.
+      try { await updateRecoveryPassword(supabase, password, recoveryUserId.current ?? ""); }
+      catch (error) {
+        if (error instanceof PasswordRecoveryError) {
+          recoveryUserId.current = null;
+          setInitError(error.message);
+          return;
+        }
+        throw error;
       }
+      setPasswordUpdated(true);
+      clearPasswordRecovery();
+      setPassword("");
+      setConfirmPassword("");
+      await completeSignOut();
     } catch (err) {
       setFormError(
         err instanceof Error ? err.message : "An unexpected error occurred. Please try again.",
       );
     } finally {
       setSubmitting(false);
+      submittingRef.current = false;
     }
   };
 
@@ -159,7 +183,8 @@ export function ResetPasswordForm() {
 
               <div className="border-t border-slate-200 pt-4 text-center">
                 <Link
-                  href="/student/login"
+                  href={loginPath}
+                  prefetch={false}
                   className="inline-flex items-center gap-1.5 text-[12px] font-medium text-[#0067A3] hover:underline"
                 >
                   <ArrowLeft className="size-3.5" /> Return to Sign In
@@ -181,18 +206,26 @@ export function ResetPasswordForm() {
 
               <div className="space-y-2 pt-2">
                 <Link
-                  href="/student/login"
+                  href={loginPath}
+                  prefetch={false}
                   className="inline-flex h-10 w-full items-center justify-center gap-2 border border-[#005587] bg-[#0067A3] text-[13px] font-bold text-white hover:bg-[#005587]"
                 >
-                  Sign In to Student Portal
-                </Link>
-                <Link
-                  href="/staff/login"
-                  className="inline-flex h-10 w-full items-center justify-center gap-2 border border-slate-300 bg-slate-50 text-[13px] font-semibold text-slate-700 hover:bg-slate-100"
-                >
-                  Sign In to Staff / Admin Portal
+                  {loginPath === "/staff/login" ? "Sign In to Staff / Admin Portal" : "Sign In to Student Portal"}
                 </Link>
               </div>
+            </div>
+          ) : passwordUpdated ? (
+            <div className="space-y-4">
+              <p className="text-[14px] font-semibold text-emerald-800">Your password has been updated.</p>
+              <p className="text-[13px] leading-5 text-slate-600">Finishing sign out so you can securely sign in again.</p>
+              {formError && <p role="alert" className="border border-red-300 bg-red-50 px-3 py-2 text-[12px] text-red-800">{formError}</p>}
+              <button type="button" disabled={submitting} className="inline-flex h-10 w-full items-center justify-center gap-2 border border-[#005587] bg-[#0067A3] text-[13px] font-bold text-white disabled:opacity-55" onClick={async () => {
+                if (submittingRef.current) return;
+                submittingRef.current = true;
+                setSubmitting(true);
+                try { await completeSignOut(); }
+                finally { submittingRef.current = false; setSubmitting(false); }
+              }}>{submitting ? "Signing out..." : "Retry sign out"}</button>
             </div>
           ) : (
             <form onSubmit={handleSubmit} className="space-y-4">
@@ -209,7 +242,9 @@ export function ResetPasswordForm() {
                     value={password}
                     onChange={e => setPassword(e.target.value)}
                     disabled={submitting}
-                    placeholder="Minimum 6 characters"
+                    minLength={PASSWORD_MIN_LENGTH}
+                    maxLength={PASSWORD_MAX_LENGTH}
+                    placeholder={`Minimum ${PASSWORD_MIN_LENGTH} characters`}
                     className="h-10 w-full border border-[#9daab7] px-3 pr-10 text-[14px] font-normal outline-none focus:border-[#0067A3] focus:ring-1 focus:ring-[#0067A3] disabled:bg-slate-100"
                     required
                   />
@@ -233,6 +268,8 @@ export function ResetPasswordForm() {
                   value={confirmPassword}
                   onChange={e => setConfirmPassword(e.target.value)}
                   disabled={submitting}
+                  minLength={PASSWORD_MIN_LENGTH}
+                  maxLength={PASSWORD_MAX_LENGTH}
                   placeholder="Re-enter your new password"
                   className="mt-1.5 h-10 w-full border border-[#9daab7] px-3 text-[14px] font-normal outline-none focus:border-[#0067A3] focus:ring-1 focus:ring-[#0067A3] disabled:bg-slate-100"
                   required
@@ -256,7 +293,8 @@ export function ResetPasswordForm() {
 
               <div className="border-t border-slate-200 pt-4 text-center">
                 <Link
-                  href="/student/login"
+                  href={loginPath}
+                  prefetch={false}
                   className="inline-flex items-center gap-1.5 text-[12px] font-medium text-[#0067A3] hover:underline"
                 >
                   <ArrowLeft className="size-3.5" /> Cancel and Return to Sign In

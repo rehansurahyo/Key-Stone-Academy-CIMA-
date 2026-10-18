@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH } from "@/lib/password-policy";
 
 const text = z.string().trim().min(1).max(20_000);
 export const subtaskSchema = z.object({
@@ -48,7 +49,9 @@ export const gradeSchema = z.object({
 export const newUserSchema = z.object({
   email: z.string().email().max(254),
   full_name: z.string().trim().min(1).max(150),
-  password: z.string().min(12).max(128),
+  password: z.string()
+    .min(PASSWORD_MIN_LENGTH, `Password must contain at least ${PASSWORD_MIN_LENGTH} characters.`)
+    .max(PASSWORD_MAX_LENGTH, `Password must contain no more than ${PASSWORD_MAX_LENGTH} characters.`),
   role: z.enum(["student", "tutor"]),
   assigned_level: z.enum(["OCS", "MCS", "SCS"]).default("SCS"),
 });
