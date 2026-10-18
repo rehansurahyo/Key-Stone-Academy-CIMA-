@@ -28,7 +28,8 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
   try {
     const { id } = await params;
     await editableUser(request, id);
-    const { error } = await createAdminClient().auth.admin.deleteUser(id);
+    const admin = await createAdminClient();
+    const { error } = await admin.auth.admin.deleteUser(id);
     if (error) throw new DashboardError(error.message);
     return Response.json({ deleted: true });
   } catch (error) { return apiError(error); }

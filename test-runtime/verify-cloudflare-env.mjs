@@ -8,6 +8,7 @@ const { Miniflare } = wranglerRequire('miniflare');
 const config = JSON.parse(await readFile(new URL('../wrangler.json', import.meta.url), 'utf8'));
 assert.ok(config.compatibility_flags.includes('nodejs_compat'));
 assert.ok(config.compatibility_flags.includes('nodejs_compat_populate_process_env'));
+assert.equal(config.keep_vars, true, 'Deployments must preserve dashboard-managed runtime variables');
 
 // Real local Workers runtime, dummy binding only. No Supabase requests,
 // credentials, student accounts, or deployed configuration are touched.

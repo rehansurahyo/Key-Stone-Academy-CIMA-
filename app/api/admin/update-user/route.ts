@@ -16,7 +16,7 @@ export async function PATCH(request: Request) {
     if (!parsed.success) throw new DashboardError(parsed.error.issues[0]?.message || "Enter a valid email address or password.");
     if (parsed.data.user_id === user.id) throw new DashboardError("Use your own account settings to change this administrator login.", 403);
 
-    const admin = createAdminClient();
+    const admin = await createAdminClient();
     const attributes: { email?: string; password?: string; email_confirm?: boolean } = {};
     if (parsed.data.email) { attributes.email = parsed.data.email; attributes.email_confirm = true; }
     if (parsed.data.password) attributes.password = parsed.data.password;
