@@ -20,7 +20,6 @@ export function ResetPasswordForm() {
   const searchParams = useSearchParams();
 
   const [verifying, setVerifying] = useState(true);
-  const [sessionReady, setSessionReady] = useState(false);
   const [initError, setInitError] = useState<string | null>(null);
 
   const [password, setPassword] = useState("");
@@ -32,107 +31,35 @@ export function ResetPasswordForm() {
   const [countdown, setCountdown] = useState(3);
 
   useEffect(() => {
-    if (!isSupabaseConfigured) {
-      setInitError("Supabase environment variables are missing.");
-      setVerifying(false);
-      return;
-    }
-
     let isMounted = true;
-    const supabase = createClient();
-
-    // 1. Check if error is present in query string or URL hash
-    const errorParam = searchParams.get("error");
-    const errorDescription = searchParams.get("error_description");
-
-    const hashString = typeof window !== "undefined" ? window.location.hash.substring(1) : "";
-    const hashParams = new URLSearchParams(hashString);
-    const hashError = hashParams.get("error");
-    const hashErrorDescription = hashParams.get("error_description");
-
-    if (errorParam || hashError) {
-      const msg =
-        errorDescription ||
-        hashErrorDescription ||
-        "The password reset link is invalid or has expired.";
-      if (isMounted) {
-        setInitError(decodeURIComponent(msg.replace(/\+/g, " ")));
-        setVerifying(false);
+    const verifyRecovery = async () => {
+      if (!isSupabaseConfigured) throw new Error("Supabase environment variables are missing.");
+      const hashParams = new URLSearchParams(window.location.hash.substring(1));
+      if (searchParams.get("error") || hashParams.get("error")) {
+        throw new Error(searchParams.get("error_description") || hashParams.get("error_description") || "The password reset link is invalid or has expired.");
       }
-      return;
-    }
-
-    // 2. Check for PKCE 'code' query parameter
-    const code = searchParams.get("code");
-    if (code) {
-      void supabase.auth
-        .exchangeCodeForSession(code)
-        .then(({ data, error: exchangeError }) => {
-          if (!isMounted) return;
-          if (exchangeError || !data.session) {
-            setInitError(
-              exchangeError?.message ||
-                "Failed to exchange recovery code. The link may have expired.",
-            );
-            setSessionReady(false);
-          } else {
-            setSessionReady(true);
-            setInitError(null);
-          }
-          setVerifying(false);
-        })
-        .catch(err => {
-          if (!isMounted) return;
-          setInitError(err instanceof Error ? err.message : "Error exchanging recovery session.");
-          setVerifying(false);
-        });
-      return;
-    }
-
-    // 3. Check for implicit hash token or existing recovery session
-    void supabase.auth.getSession().then(({ data, error: sessionError }) => {
+      // The SSR browser client exchanges the code during initialization.
+      // Await it rather than consuming the one-use verifier a second time.
+      const { data, error } = await createClient().auth.getSession();
+      if (error) throw error;
+      if (!data.session) {
+        throw new Error("No active password reset session found. Please request a new link and open it in the same browser and device.");
+      }
+    };
+    void verifyRecovery().then(() => {
       if (!isMounted) return;
-      if (sessionError) {
-        setInitError(sessionError.message);
-        setVerifying(false);
-        return;
-      }
-
-      if (data.session) {
-        setSessionReady(true);
-        setVerifying(false);
-      } else {
-        // Listen for auth event (e.g. PASSWORD_RECOVERY or SIGNED_IN from hash fragment)
-        const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
-          if (!isMounted) return;
-          if (event === "PASSWORD_RECOVERY" || session) {
-            setSessionReady(true);
-            setInitError(null);
-            setVerifying(false);
-          }
-        });
-
-        // Set a timeout in case no session or hash arrives
-        const timer = setTimeout(() => {
-          if (isMounted && !sessionReady) {
-            setInitError(
-              "No active password reset session found. Please request a new password reset link.",
-            );
-            setVerifying(false);
-          }
-        }, 1500);
-
-        return () => {
-          clearTimeout(timer);
-          authListener.subscription.unsubscribe();
-        };
-      }
+      setInitError(null);
+      setVerifying(false);
+    }).catch(err => {
+      if (!isMounted) return;
+      setInitError(err instanceof Error ? err.message : "Unable to verify the password reset session.");
+      setVerifying(false);
     });
 
     return () => {
       isMounted = false;
     };
-  }, [searchParams, sessionReady]);
+  }, [searchParams]);
 
   // Handle countdown redirect on success
   useEffect(() => {

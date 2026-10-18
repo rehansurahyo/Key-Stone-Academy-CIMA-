@@ -25,12 +25,9 @@ export function ForgotPasswordForm() {
 
     try {
       const supabase = createClient();
-      // Determine the redirect URL for the reset password page
-      const origin =
-        typeof window !== "undefined" && window.location.origin
-          ? window.location.origin
-          : "https://mocks.keystoneacademia.com";
-      const redirectTo = `${origin}/reset-password`;
+      // Keep recovery on the host that owns the PKCE verifier cookie.
+      // This handler only runs in the browser; never fall back to another host.
+      const redirectTo = window.location.origin + "/reset-password";
 
       const { error: resetError } = await supabase.auth.resetPasswordForEmail(
         email.trim(),
@@ -83,7 +80,8 @@ export function ForgotPasswordForm() {
                     We have sent a password reset link to{" "}
                     <strong className="text-slate-900">{email}</strong>. Please
                     check your inbox and spam folder, then follow the link to
-                    choose a new password.
+                    choose a new password. Open the latest link in the same
+                    browser and device where you requested it.
                   </p>
                 </div>
               </div>

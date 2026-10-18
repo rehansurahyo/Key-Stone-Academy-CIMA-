@@ -63,7 +63,8 @@ try{
   const response=await proxy(incoming);
   assert.equal(refreshCalls,1);assert.equal(incoming.cookies.get('test-auth').value,'fresh');assert.equal(response.cookies.get('test-auth').value,'fresh');
   assert.match(response.headers.get('x-middleware-request-cookie'),/test-auth=fresh/);assert.match(response.headers.get('cache-control'),/no-store/);
-  assert.deepEqual(config.matcher,['/dashboard/:path*','/student/:path*','/exam/:path*','/admin/:path*','/tutor/:path*','/api/admin/:path*','/api/auth/session','/api/dashboard/:path*']);
+  assert.deepEqual(config.matcher,['/','/dashboard/:path*','/student/:path*','/exam/:path*','/admin/:path*','/tutor/:path*','/api/admin/:path*','/api/auth/session','/api/dashboard/:path*']);
+  for (const recoveryPath of ['/forgot-password','/reset-password']) assert.ok(!config.matcher.includes(recoveryPath), 'Recovery pages must remain accessible before login');
   for (const [testRole,path,expected] of [['student','/admin',307],['student','/dashboard/users',307],['student','/api/admin/update-user',403],['tutor','/dashboard/users',307],['tutor','/dashboard/submissions',200],['admin','/admin',307],['admin','/student/dashboard',307],['student','/dashboard',200]]) {
     role=testRole;const result=await proxy(new NextRequest(`http://localhost:3001${path}`));assert.equal(result.status,expected,`${role} access to ${path}`);
     if(expected===307) assert.match(result.headers.get('location'),/\/dashboard/);

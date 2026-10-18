@@ -20,6 +20,16 @@ export function createClient(): SupabaseClient {
     );
   }
 
-  browserClient ??= createBrowserClient(url, anonKey);
+  browserClient ??= createBrowserClient(url, anonKey, {
+    auth: {
+      flowType: "pkce",
+      persistSession: true,
+      autoRefreshToken: true,
+      detectSessionInUrl: true,
+    },
+    // Keep @supabase/ssr's cookie-backed storage for both sessions and PKCE.
+    // Host-only cookies must not be shared with the separate admin portal.
+    cookieOptions: { path: "/", sameSite: "lax" },
+  });
   return browserClient;
 }
