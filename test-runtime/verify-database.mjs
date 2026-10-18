@@ -61,6 +61,17 @@ try {
   const reportUploads = await readFile(new URL('../supabase/migrations/20261015_report_uploads_and_evaluation_links.sql',import.meta.url),'utf8');
   await db.exec(reportUploads); await db.exec(reportUploads);
   await db.exec(await readFile(new URL('../supabase/tests/report_uploads.sql',import.meta.url),'utf8'));
+  await db.exec('alter table auth.users add column is_anonymous boolean not null default false');
+  await db.exec(`insert into auth.users(id,email,is_anonymous) values
+    ('00000000-0000-4000-8000-000000009870',null,true),
+    ('00000000-0000-4000-8000-000000009871','existing-enrolled@example.test',false)`);
+  const trialAccess = await readFile(new URL('../supabase/migrations/20261019_student_trial_access.sql',import.meta.url),'utf8');
+  await db.exec(trialAccess); await db.exec(trialAccess);
+  assert.equal((await db.query("select access_type from public.profiles where id='00000000-0000-4000-8000-000000009870'")).rows[0].access_type,'trial','Pre-existing guests never inherit full enrollment');
+  assert.equal((await db.query("select access_type from public.profiles where id='00000000-0000-4000-8000-000000009871'")).rows[0].access_type,'enrolled','Existing enrolled students retain full access');
+  await db.exec("delete from auth.users where id in ('00000000-0000-4000-8000-000000009870','00000000-0000-4000-8000-000000009871')");
+  await db.exec(await readFile(new URL('../supabase/tests/student_trial_access.sql',import.meta.url),'utf8'));
+  console.log('PASS: trial RLS: one fixed Mock 1, five visible catalog cards, locked content/storage/attempts, lead idempotency, no self-enrollment, enrolled access and autosave/timer/submission persistence');
 } catch(error) {
   console.error('FAIL: SQL/RLS test',error.message,error.code,error.where);
   await db.close();process.exit(1);

@@ -6,6 +6,7 @@ import type { ExamMaterial, ExamQuestion } from "@/lib/dashboard/types";
 import Link from "next/link";
 import { Notice } from "@/components/dashboard/shared";
 import { parseExamLevel } from "@/lib/exam-levels";
+import { canUseExam } from "@/lib/exam-access";
 
 export default async function ExamPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -17,6 +18,7 @@ export default async function ExamPage({ params }: { params: Promise<{ id: strin
   if (profile.role === "student" && (!parseExamLevel(profile.assigned_level) || profile.assigned_level !== exam.level)) {
     redirect("/dashboard?notice=exam-level");
   }
+  if (!canUseExam(profile, exam)) redirect("/dashboard?notice=trial-locked");
   if (exam.status !== "published") {
     const { data: existing, error } = await supabase.from("exam_sessions").select("id")
       .eq("exam_id", id).eq("user_id", user.id).in("status", ["not_started", "in_progress"]).limit(1).maybeSingle();

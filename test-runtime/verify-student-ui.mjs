@@ -5,6 +5,7 @@ import {loader} from './component-loader.mjs';
 const browser=new Window({url:'http://localhost:3001',width:1440,height:900});
 const navigations=[];browser.location.assign=url=>navigations.push(url);
 globalThis.window=browser;
+globalThis.self=browser;
 for(const key of ['document','HTMLElement','HTMLInputElement','HTMLTextAreaElement','Event','MouseEvent','PointerEvent','CustomEvent','FormData','File','Blob','Node','NodeFilter','MutationObserver','ResizeObserver','Element','DocumentFragment','DOMParser'])globalThis[key]=browser[key];
 globalThis.requestAnimationFrame=browser.requestAnimationFrame.bind(browser);globalThis.cancelAnimationFrame=browser.cancelAnimationFrame.bind(browser);globalThis.getComputedStyle=browser.getComputedStyle.bind(browser);
 Object.defineProperty(globalThis,'navigator',{value:browser.navigator,configurable:true});globalThis.IS_REACT_ACT_ENVIRONMENT=true;

@@ -13,7 +13,7 @@ export async function requirePortalUser() {
   const { data: { user }, error } = await supabase.auth.getUser();
   if (error || !user) throw new DashboardError("Please sign in to continue.", 401);
   const { data, error: profileError } = await supabase.from("profiles")
-    .select("id, full_name, email, role, is_active, assigned_level, created_at")
+    .select("id, full_name, email, role, is_active, assigned_level, access_type, trial_exam_id, created_at")
     .eq("id", user.id).single();
   if (profileError || !data) throw new DashboardError("Unable to verify your profile. Please contact support.", 503);
   const profile = data as Profile;

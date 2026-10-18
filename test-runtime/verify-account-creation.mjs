@@ -195,6 +195,7 @@ assert.equal(state.selected, true, 'Profile writes must prove a profile row was 
 assert.equal(state.removed, 0);
 assert.equal(state.details.assigned_level, 'MCS');
 assert.equal(state.details.role, 'student');
+assert.equal(state.details.access_type, 'enrolled', 'Admin-created credential accounts retain full enrolled access');
 
 for (const role of ['student', 'tutor']) {
   outcome = await run({ role });

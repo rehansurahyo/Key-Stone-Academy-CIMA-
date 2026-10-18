@@ -8,6 +8,8 @@ export type Profile = {
   role: "student" | StaffRole;
   is_active: boolean;
   assigned_level: ExamLevel;
+  access_type: "enrolled" | "trial";
+  trial_exam_id: string | null;
   created_at: string;
 };
 

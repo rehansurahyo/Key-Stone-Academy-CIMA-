@@ -101,11 +101,11 @@ export function StudentSignIn({
             {loading && <Loader2 className="size-4 animate-spin" />}
             {loading ? "Signing in..." : "Sign In"}
           </button>
-          <div className="border-t border-slate-200 pt-4">
-            <p className="mb-2 text-center text-[12px] text-slate-500">New to Keystone Academia?</p>
-            <FreeTrialDialog />
-          </div>
         </form>
+        <div className="mx-6 mb-6 border-t border-slate-200 pt-4">
+          <p className="mb-2 text-center text-[12px] text-slate-500">New to Keystone Academia?</p>
+          <FreeTrialDialog />
+        </div>
       </section>
     </main>
   );

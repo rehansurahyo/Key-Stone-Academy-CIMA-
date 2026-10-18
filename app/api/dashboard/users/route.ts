@@ -35,7 +35,7 @@ export async function POST(request: Request) {
     }
     createdId = data.user.id;
     stage = "profile-write";
-    const { data: profile, error: profileError } = await admin.from("profiles").update({ role, full_name, is_active: true, assigned_level }).eq("id", createdId).select("id").single();
+    const { data: profile, error: profileError } = await admin.from("profiles").update({ role, full_name, is_active: true, assigned_level, access_type: "enrolled" }).eq("id", createdId).select("id").single();
     if (profileError || !profile) {
       providerFailure = profileError;
       throw new DashboardError("Unable to create the user profile.");
