@@ -5,7 +5,10 @@ import { loader } from './component-loader.mjs';
 
 const browser = new Window({ url: 'http://localhost:3001/student/login' });
 globalThis.window = browser;
-for (const key of ['document','HTMLElement','HTMLInputElement','HTMLSelectElement','Event','MouseEvent','FormData','Node']) globalThis[key] = browser[key];
+for (const key of ['document','HTMLElement','HTMLInputElement','HTMLSelectElement','Event','MouseEvent','FormData','Node','Element','MutationObserver','ResizeObserver','CustomEvent','DocumentFragment','NodeFilter']) globalThis[key] = browser[key];
+globalThis.getComputedStyle = browser.getComputedStyle.bind(browser);
+globalThis.requestAnimationFrame = browser.requestAnimationFrame.bind(browser);
+globalThis.cancelAnimationFrame = browser.cancelAnimationFrame.bind(browser);
 Object.defineProperty(globalThis, 'navigator', { value: browser.navigator, configurable: true });
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 const { createRoot } = await import('../node_modules/react-dom/client.js');
@@ -40,6 +43,7 @@ const change = async (input,value) => {
 try {
   assert.ok(COUNTRIES.length>240);assert.equal(resolveCountry('PK').name,'Pakistan');
   assert.equal(normalizeTrialContact('PK','PK','03001234567').phone,'+923001234567');
+  assert.equal(normalizeTrialContact(undefined,'PK','03001234567').phone,'+923001234567');
   assert.equal(normalizeTrialContact('IT','IT','02 36618 300').phone,'+390236618300','Italian leading zero must be preserved');
   assert.equal(normalizeTrialContact('CA','US','202 555 0123').phone,'+12025550123','Shared calling codes work');
   assert.throws(()=>normalizeTrialContact('PK','PK','+447911123456'),/matching/);
@@ -50,13 +54,15 @@ try {
   assert.ok(trialForm); assert.equal(trialForm.parentElement.closest('form'), null, 'Trial form must not nest inside login form');
   assert.equal(trialForm.querySelector('input[type="password"]'), null, 'Trial must not request a password');
   assert.ok(trialForm.textContent.includes('Case Study'));assert.ok(!trialForm.textContent.includes('Target Level'));
-  const countryInput=trialForm.querySelector('[aria-label="Country"]');
-  assert.equal(trialForm.querySelectorAll('datalist option').length,COUNTRIES.length);
-  await change(countryInput,'Pakistan');
-  assert.equal(trialForm.elements.namedItem('country').value,'PK');assert.equal(trialForm.elements.namedItem('phone_country').value,'PK');
-  await change(trialForm.elements.namedItem('phone_country'),'GB');
-  assert.equal(trialForm.elements.namedItem('country').value,'PK','Manual phone code must not change residence');
-  await change(trialForm.elements.namedItem('phone_country'),'PK');
+  assert.equal(trialForm.querySelector('[aria-label="Country"]'),null,'No separate Country field');
+  assert.equal(trialForm.elements.namedItem('country'),null);
+  await click(trialForm.querySelector('[aria-label="Choose phone country code"]'));
+  const phoneSearch=document.querySelector('[aria-label="Search phone country codes"]');
+  assert.ok(phoneSearch);
+  await change(phoneSearch,'Pakistan');
+  await click([...document.querySelectorAll('[cmdk-item]')].find(item=>item.textContent.includes('Pakistan')));
+  assert.equal(trialForm.elements.namedItem('phone_country').value,'PK');
+  assert.equal(document.querySelector('[aria-label="Search phone country codes"]'),null,'Selection closes the bounded popover');
   for (const [name, value] of Object.entries({ full_name: 'Trial Candidate', email: 'trial@example.test', phone: '03001234567', target_level: 'OCS' })) trialForm.elements.namedItem(name).value = value;
   await act(async () => trialForm.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })));
   assert.match(host.querySelector('[role="alert"]').textContent, /Network interrupted/);
@@ -71,7 +77,7 @@ try {
   assert.deepEqual(navigations, ['/dashboard']);
   assert.equal(calls.length, 2, 'Double submission sends only one request');
   assert.equal(calls[1].options.credentials, 'same-origin');
-  assert.deepEqual(JSON.parse(calls[1].options.body), { full_name: 'Trial Candidate', email: 'trial@example.test', phone: '+923001234567', country:'PK', phone_country:'PK', target_level: 'OCS' });
+  assert.deepEqual(JSON.parse(calls[1].options.body), { full_name: 'Trial Candidate', email: 'trial@example.test', phone: '+923001234567', phone_country:'PK', target_level: 'OCS' });
   console.log('PASS: real form opens without nested forms/password signup, preserves fields on network failure, retries safely and redirects to dashboard once');
 
   const exams = Array.from({ length: 5 }, (_, index) => ({ id: `mock-${index+1}`, name: `OCS Mock ${index+1}`, description: 'Published paper', status: 'published', level: 'OCS' }));
@@ -102,9 +108,9 @@ try {
   console.log('PASS: trial dashboard renders all five papers with exactly four locks; instant level tabs use no network; enrolled students retain all five start links');
   const lead={id:'contact-lead',full_name:'Contact Candidate',email:'contact@example.test',phone:'+447911123456',country:'PK',phone_country:'GB',country_code:'+44',target_level:'OCS',status:'new',admin_notes:'',created_at:'2026-10-19T00:00:00Z'};
   await act(async()=>root.render(React.createElement(LeadsTable,{leads:[lead,{...lead,id:'legacy-lead',full_name:'Legacy Candidate',country:null,phone_country:null,country_code:null}]})));
-  assert.ok(host.textContent.includes('Pakistan'));assert.ok(host.textContent.includes('United Kingdom'));assert.ok(host.textContent.includes('Phone code: +44'));assert.ok(host.textContent.includes('Not provided'));
-  await change(host.querySelector('input'),'Pakistan');assert.equal(host.querySelectorAll('tbody tr').length,1);assert.ok(host.textContent.includes('Contact Candidate'));assert.ok(!host.textContent.includes('Legacy Candidate'));
-  console.log('PASS: country auto-prefix/manual overrides, international parsing and admin country search/display preserve legacy leads');
+  assert.ok(host.textContent.includes('Phone country'));assert.ok(host.textContent.includes('United Kingdom'));assert.ok(host.textContent.includes('Phone code: +44'));assert.ok(host.textContent.includes('Not provided'));
+  await change(host.querySelector('input'),'United Kingdom');assert.equal(host.querySelectorAll('tbody tr').length,1);assert.ok(host.textContent.includes('Contact Candidate'));assert.ok(!host.textContent.includes('Legacy Candidate'));
+  console.log('PASS: searchable phone prefix, international parsing and admin phone-country search/display preserve legacy leads');
 } finally {
   await act(async () => root.unmount());
   globalThis.fetch = previousFetch; await browser.happyDOM.close();

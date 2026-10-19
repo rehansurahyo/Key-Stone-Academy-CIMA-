@@ -3,10 +3,11 @@
 import { FormEvent, useId, useRef, useState } from "react";
 import { Loader2, Sparkles, X } from "lucide-react";
 import { TrialCaptcha } from "@/components/trial-captcha";
-import { COUNTRIES, resolveCountry, type CountryCode } from "@/lib/countries";
+import { type CountryCode } from "@/lib/countries";
+import { PhoneCodeSelect } from "@/components/phone-code-select";
 import { normalizeTrialContact } from "@/lib/trial-contact";
 
-const fieldClass = "mt-1.5 h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm font-normal text-slate-900 outline-none transition focus:border-[#133E68] focus:ring-2 focus:ring-blue-100 disabled:bg-slate-50";
+const fieldClass = "free-mock-input mt-1.5 h-11 rounded-lg border border-slate-300 bg-white px-3 font-normal text-slate-900 outline-none transition focus:border-[#133E68] focus:ring-2 focus:ring-blue-100 disabled:bg-slate-50";
 const labelClass = "block text-[13px] font-semibold text-slate-700";
 
 export function FreeTrialDialog({ initiallyOpen = false }: { initiallyOpen?: boolean }) {
@@ -15,8 +16,6 @@ export function FreeTrialDialog({ initiallyOpen = false }: { initiallyOpen?: boo
   const [error, setError] = useState("");
   const [captchaToken, setCaptchaToken] = useState("");
   const [captchaKey, setCaptchaKey] = useState(0);
-  const [countryInput, setCountryInput] = useState("");
-  const [country, setCountry] = useState<CountryCode | "">("");
   const [phoneCountry, setPhoneCountry] = useState<CountryCode | "">("");
   const id = useId();
   const submitting = useRef(false);
@@ -28,11 +27,11 @@ export function FreeTrialDialog({ initiallyOpen = false }: { initiallyOpen?: boo
     setBusy(true); setError("");
     const form = new FormData(event.currentTarget);
     try {
-      const contact = normalizeTrialContact(country, phoneCountry, form.get("phone"));
+      const contact = normalizeTrialContact(undefined, phoneCountry, form.get("phone"));
       const response = await fetch("/api/free-trial", {
         method: "POST", headers: { "Content-Type": "application/json" },
         credentials: "same-origin", signal: AbortSignal.timeout(30_000),
-        body: JSON.stringify({ full_name: form.get("full_name"), email: form.get("email"), phone: contact.phone, country: contact.country, phone_country: contact.phone_country, target_level: form.get("target_level"), ...(captchaToken ? { captcha_token: captchaToken } : {}) }),
+        body: JSON.stringify({ full_name: form.get("full_name"), email: form.get("email"), phone: contact.phone, phone_country: contact.phone_country, target_level: form.get("target_level"), ...(captchaToken ? { captcha_token: captchaToken } : {}) }),
       });
       const data = await response.json().catch(() => ({})) as { error?: string; redirect?: string };
       if (!response.ok || data.redirect !== "/dashboard") throw new Error(data.error || "Unable to start your trial. Please try again.");
@@ -51,14 +50,15 @@ export function FreeTrialDialog({ initiallyOpen = false }: { initiallyOpen?: boo
     <button type="button" onClick={() => { setOpen(true); setError(""); }} className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-lg border border-amber-500 bg-amber-400 text-[13px] font-bold text-[#0B2545] shadow-sm transition hover:bg-amber-300 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0B2545] active:translate-y-px">
       <Sparkles className="size-4" />Access Free Mock
     </button>
-    {open && <div role="dialog" aria-modal="true" aria-labelledby={`${id}-title`} aria-describedby={`${id}-description`} className="fixed inset-0 z-[100] grid place-items-center overflow-y-auto bg-[#07182c]/65 p-4 backdrop-blur-[3px]">
-      <section className="max-h-[92dvh] w-full max-w-[480px] overflow-y-auto rounded-2xl border border-white/20 bg-white text-left shadow-[0_24px_80px_rgba(0,0,0,.3)]">
+    {open && <div role="dialog" aria-modal="true" aria-labelledby={`${id}-title`} aria-describedby={`${id}-description`} className="free-mock-overlay fixed inset-0 z-[100] grid place-items-center bg-[#07182c]/65 backdrop-blur-[3px]">
+      <section className="free-mock-panel rounded-2xl border border-white/20 bg-white text-left shadow-[0_24px_80px_rgba(0,0,0,.3)]">
         <header className="relative border-t-[3px] border-amber-400 bg-[#0B2545] px-6 py-5 pr-14 text-white"><div className="mb-2 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-amber-300"><Sparkles className="size-3.5" />Keystone Academia</div><h2 id={`${id}-title`} className="text-xl font-semibold tracking-tight">Claim your free trial</h2><p id={`${id}-description`} className="mt-1.5 text-[13px] leading-5 text-blue-100">Tell us which CIMA case-study level you are preparing for.</p><button type="button" disabled={busy} aria-label="Close free trial form" onClick={() => setOpen(false)} className="absolute right-4 top-4 rounded-md p-1.5 text-blue-100 transition hover:bg-white/15 focus-visible:outline-2 focus-visible:outline-amber-300 disabled:opacity-40"><X className="size-5" /></button></header>
-        <form onSubmit={submit} className="p-5 sm:p-6"><fieldset disabled={busy} className="space-y-4">
+        <form onSubmit={submit} className="free-mock-form"><fieldset disabled={busy} className="free-mock-fields">
+          <div className="free-mock-name-email">
           <label className={labelClass}>Full Name<input required name="full_name" autoComplete="name" maxLength={150} placeholder="Enter your full name" className={fieldClass} /></label>
           <label className={labelClass}>Email Address<input required name="email" type="email" autoComplete="email" maxLength={254} placeholder="you@example.com" className={fieldClass} /></label>
-          <div><label htmlFor={`${id}-country`} className={labelClass}>Country</label><input id={`${id}-country`} aria-label="Country" required autoComplete="country-name" list={`${id}-countries`} value={countryInput} onChange={event => { const input = event.target.value; const selected = resolveCountry(input); setCountryInput(input); setCountry(selected?.code ?? ""); if (selected) setPhoneCountry(selected.code); }} onBlur={() => { const selected = resolveCountry(countryInput); if (selected) setCountryInput(selected.name); }} placeholder="Search or select your country" className={fieldClass} /><datalist id={`${id}-countries`}>{COUNTRIES.map(item => <option key={item.code} value={item.name} label={`${item.code} · ${item.dialCode}`} />)}</datalist><input type="hidden" name="country" value={country} /></div>
-          <div><label htmlFor={`${id}-phone`} className={labelClass}>Phone / WhatsApp Number</label><div className="mt-1.5 flex gap-2"><select required name="phone_country" aria-label="Phone country code" value={phoneCountry} onChange={event => setPhoneCountry(event.target.value as CountryCode)} className={`${fieldClass} mt-0 w-[132px] shrink-0 pr-1`}><option value="" disabled>Code</option>{COUNTRIES.map(item => <option key={item.code} value={item.code}>{item.dialCode} · {item.code} — {item.name}</option>)}</select><input id={`${id}-phone`} required name="phone" type="tel" autoComplete="tel-national" maxLength={50} placeholder="Your phone number" className={`${fieldClass} mt-0 min-w-0 flex-1`} /></div></div>
+          </div>
+          <div><label htmlFor={`${id}-phone`} className={labelClass}>Phone / WhatsApp Number</label><div className="free-mock-phone-row"><PhoneCodeSelect value={phoneCountry} onChange={setPhoneCountry} disabled={busy} /><input type="hidden" name="phone_country" value={phoneCountry} /><input id={`${id}-phone`} required name="phone" type="tel" autoComplete="tel-national" maxLength={50} placeholder="Your phone number" className={fieldClass} /></div></div>
           <label className={labelClass}>Case Study<select required name="target_level" defaultValue="" className={fieldClass}><option value="" disabled>Select your case study</option><option value="OCS">Operational</option><option value="MCS">Management</option><option value="SCS">Strategic</option></select></label>
           <TrialCaptcha key={captchaKey} onToken={setCaptchaToken} />
           {error && <p role="alert" className="border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-800">{error}</p>}

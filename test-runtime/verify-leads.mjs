@@ -30,11 +30,14 @@ assert.equal((await trial.POST(request("http://localhost:3001/api/free-trial", {
 assert.equal((await trial.POST(request("http://localhost:3001/api/free-trial", { full_name: "A", email: "a@example.com", phone: "12345", target_level: "OCS" }, "https://invalid.example"))).status, 403);
 const details = { full_name: "Trial", email: "trial@example.test", phone: "03001234567", country: "PK", phone_country: "PK", target_level: "OCS" };
 const submitTrial = body => trial.POST(request("http://localhost:3001/api/free-trial", body ?? details));
-for (const invalid of [{country:'ZZ'}, {phone_country:'ZZ'}, {phone:'123'}, {phone:'+447911123456'}, {country:undefined}]) {
+for (const invalid of [{country:'ZZ'}, {phone_country:'ZZ'}, {phone:'123'}, {phone:'+447911123456'}]) {
   const before = registered.length;
   assert.equal((await submitTrial({...details,...invalid})).status,400);
   assert.equal(registered.length,before,'Invalid country/phone metadata must not reach registration');
 }
+response = await submitTrial({...details,country:undefined});
+assert.equal(response.status,201,'The new form does not collect a separate country');
+assert.equal(registered.at(-1).payload.p_country,'PK','Legacy RPC remains compatible using the selected phone region');
 response = await submitTrial({...details,country:'PK',phone_country:'GB',phone:'07911123456'});
 assert.equal(response.status,201);assert.equal(registered.at(-1).payload.p_phone,'+447911123456');
 assert.equal(registered.at(-1).payload.p_country,'PK');assert.equal(registered.at(-1).payload.p_country_code,'+44');

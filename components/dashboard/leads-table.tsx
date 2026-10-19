@@ -14,12 +14,12 @@ export function LeadsTable({ leads }: { leads: TrialLead[] }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const router = useRouter();
-  const visible = useMemo(() => { const term = query.trim().toLowerCase(); return term ? leads.filter(lead => `${lead.full_name} ${lead.email} ${lead.phone} ${lead.country || ""} ${countryName(lead.country)} ${lead.country_code || ""} ${lead.target_level} ${lead.status}`.toLowerCase().includes(term)) : leads; }, [leads, query]);
+  const visible = useMemo(() => { const term = query.trim().toLowerCase(); return term ? leads.filter(lead => `${lead.full_name} ${lead.email} ${lead.phone} ${lead.phone_country || ""} ${countryName(lead.phone_country)} ${lead.country_code || ""} ${lead.target_level} ${lead.status}`.toLowerCase().includes(term)) : leads; }, [leads, query]);
   return <><div className="mb-5 max-w-md"><label className="relative block"><Search className="pointer-events-none absolute left-3 top-3 size-4 text-slate-400" /><span className="sr-only">Search trial requests</span><input value={query} onChange={event => setQuery(event.target.value)} placeholder="Search name, email, phone, country or case study" className={`${inputClass} pl-9`} /></label></div>
     <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
       <table className="w-full min-w-[900px] text-left text-sm">
         <thead className="border-b bg-slate-50 text-xs text-slate-500"><tr>
-          <th className="px-5 py-3">Prospect</th><th className="px-4 py-3">Country</th>
+          <th className="px-5 py-3">Prospect</th><th className="px-4 py-3">Phone country</th>
           <th className="px-4 py-3">Case Study</th><th className="px-4 py-3">Requested</th>
           <th className="px-4 py-3">Status</th><th className="px-5 py-3 text-right">Manage</th>
         </tr></thead>
@@ -28,7 +28,7 @@ export function LeadsTable({ leads }: { leads: TrialLead[] }) {
             <p className="mt-1 text-xs text-slate-500">{lead.email}</p><p className="mt-1 text-xs text-slate-500">{lead.phone}</p>
             {lead.country_code && <p className="mt-1 text-[11px] text-slate-400">Phone code: {lead.country_code}{lead.phone_country ? ` (${countryName(lead.phone_country)})` : ""}</p>}
           </td>
-          <td className="px-4 py-4 text-slate-600">{countryName(lead.country)}</td>
+          <td className="px-4 py-4 text-slate-600">{countryName(lead.phone_country)}</td>
           <td className="px-4 py-4 font-semibold text-blue-700">{lead.target_level}</td>
           <td className="px-4 py-4 text-xs text-slate-500">{new Date(lead.created_at).toLocaleString("en-GB", { timeZone: "Asia/Karachi", dateStyle: "medium", timeStyle: "short" })}</td>
           <td className="px-4 py-4 capitalize text-slate-700">{lead.status}</td>

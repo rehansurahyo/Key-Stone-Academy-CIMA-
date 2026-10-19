@@ -107,6 +107,51 @@ div[data-nextjs-toast-wrapper],
 }
 
 /* Touch-friendly horizontal scrolling */
+.free-mock-overlay { padding: 16px; }
+.free-mock-panel {
+  width: min(640px, 100%);
+  min-width: 0;
+  max-height: calc(100dvh - 32px);
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.free-mock-form { padding: 20px 24px; }
+.free-mock-fields { display: grid; min-width: 0; gap: 14px; }
+.free-mock-fields > *, .free-mock-name-email > * { min-width: 0; }
+.free-mock-name-email { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.free-mock-input { width: 100%; min-width: 0; max-width: 100%; font-size: 14px; }
+.free-mock-phone-row { display: grid; grid-template-columns: 104px minmax(0, 1fr); gap: 10px; margin-top: 6px; }
+.free-mock-phone-row > input { margin-top: 0; }
+.free-mock-code-button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+  height: 44px;
+  padding: 0 12px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  background: white;
+  color: #0f172a;
+  font-size: 14px;
+  font-weight: 400;
+}
+.free-mock-code-button:focus-visible { outline: 2px solid #133e68; outline-offset: 2px; }
+.free-mock-code-menu { width: min(320px, calc(100vw - 32px)); max-height: var(--radix-popover-content-available-height); overflow: hidden; }
+.free-mock-code-list { max-height: min(200px, calc(var(--radix-popover-content-available-height) - 48px)); overscroll-behavior: contain; }
+@media (max-width: 540px) {
+  .free-mock-overlay { padding: 12px; }
+  .free-mock-panel { max-height: calc(100dvh - 24px); }
+  .free-mock-form { padding: 16px; }
+  .free-mock-fields { gap: 12px; }
+  .free-mock-name-email { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+  .free-mock-phone-row { grid-template-columns: 88px minmax(0, 1fr); gap: 8px; }
+  .free-mock-input, .free-mock-code-menu input { font-size: 16px; }
+}
+
 .touch-scroll {
   -webkit-overflow-scrolling: touch;
   scrollbar-width: thin;

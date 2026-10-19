@@ -6,7 +6,7 @@ const leadSchema = z.object({
   full_name: z.string().trim().min(1).max(150),
   email: z.string().trim().email().max(254),
   phone: z.string().trim().min(5).max(50),
-  country: z.string().length(2),
+  country: z.string().length(2).optional(),
   phone_country: z.string().length(2),
   target_level: z.enum(["OCS", "MCS", "SCS"]),
   captcha_token: z.string().max(4096).optional(),
@@ -19,7 +19,7 @@ export async function POST(request: Request) {
   }
   const parsed = leadSchema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) {
-    return Response.json({ error: "Enter your name, email, country, phone country code and case study." }, { status: 400 });
+    return Response.json({ error: "Enter your name, email, phone country code, phone number and case study." }, { status: 400 });
   }
   let contact: ReturnType<typeof normalizeTrialContact>;
   try { contact = normalizeTrialContact(parsed.data.country, parsed.data.phone_country, parsed.data.phone); }
