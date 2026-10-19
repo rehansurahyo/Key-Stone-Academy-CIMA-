@@ -3,6 +3,10 @@
 1. Run `migrations/20261019_student_trial_access.sql` after all earlier migrations.
    Then run `migrations/20261019_trial_lead_contact_details.sql` for phone contact
    metadata. The compact form update needs no additional migration.
+   Run `migrations/20261019_trial_mock_level_mapping.sql` to fix level changes and
+   direct publication of Mock 1. It also repairs the verified legacy OCS paper
+   using a published OCS copy; original attempts/answers/trial grants stay intact.
+   The incorrectly classified original is no longer offered to new SCS trials.
 2. In Supabase Authentication settings, enable **Anonymous Sign-ins**. No email or
    password is created for a lead. Do not disable existing email/password login.
 3. Recommended before exposing the public form: enable Cloudflare Turnstile in
@@ -10,7 +14,15 @@
    `NEXT_PUBLIC_TURNSTILE_SITE_KEY` in the deployment environment and rebuild.
    Supabase verifies tokens; no CAPTCHA secret belongs in browser code. Configure
    Auth signup rate limits and, where available, Cloudflare endpoint rate limiting.
-4. Publish a genuine **Mock 1** for each offered level. The migration discovers
+4. In **Admin Dashboard → Mock exams**, publish the desired paper and click
+   **Set as Free Mock**, then confirm. Any published mock can be selected, not
+   only Mock 1. One selection is stored per level, and only active administrators
+   can change it. Existing learners keep their original `trial_exam_id`, answers,
+   timers and attempts; changes apply to new registrations only. Concurrent stale
+   confirmations are rejected rather than overwriting a newer selection. No new
+   SQL migration is required for this admin control (it uses the existing RLS).
+
+   If no explicit choice exists, publish a genuine **Mock 1** for each offered level. The migration discovers
    published names such as `OCS Mock 1` or `MCS Mock1` (not `Mock 10`). Future
    publications are discovered by a database trigger. If there are duplicates,
    the oldest published Mock 1 is chosen; inspect the mapping before launch:
@@ -20,7 +32,7 @@
    from public.trial_exam_access t join public.exams e on e.id=t.exam_id;
    ```
 
-   An administrator can explicitly choose the intended existing Mock 1:
+   SQL-only alternative for administrators (the dashboard is preferred):
 
    ```sql
    insert into public.trial_exam_access(level, exam_id)

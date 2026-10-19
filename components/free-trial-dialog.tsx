@@ -63,7 +63,7 @@ export function FreeTrialDialog({ initiallyOpen = false }: { initiallyOpen?: boo
           <TrialCaptcha key={captchaKey} onToken={setCaptchaToken} />
           {error && <p role="alert" className="border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-800">{error}</p>}
           <button disabled={busy || Boolean(process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY && !captchaToken)} className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-lg border border-amber-500 bg-amber-400 text-sm font-bold text-[#0B2545] shadow-sm transition hover:bg-amber-300 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0B2545] active:translate-y-px disabled:cursor-not-allowed disabled:opacity-50">{busy && <Loader2 className="size-4 animate-spin" />}{busy ? "Opening your dashboard…" : "Access Free Mock"}</button>
-          <p className="text-center text-xs leading-5 text-slate-500">Your dashboard opens immediately. Try Mock 1 free; remaining mocks require enrolment.</p>
+          <p className="text-center text-xs leading-5 text-slate-500">Your dashboard opens immediately. Try one selected mock free; remaining mocks require enrolment.</p>
           <p className="text-center text-[11px] leading-4 text-slate-400">Keep your browser data to resume your trial.</p>
         </fieldset></form>
       </section>

@@ -53,7 +53,7 @@ export async function POST(request: Request) {
     });
     if (error) {
       return Response.json({ error: error.code === "P0002"
-        ? "Mock 1 is not available for this level yet. Please contact Keystone Academia."
+        ? "A free mock is not available for this level yet. Please contact Keystone Academia."
         : "We could not save your trial request. Please try again or contact Keystone Academia." },
       { status: 503, headers: { "Cache-Control": "private, no-store" } });
     }

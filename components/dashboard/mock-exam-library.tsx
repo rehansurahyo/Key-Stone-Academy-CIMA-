@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { EXAM_LEVELS, LEVEL_NAMES, parseExamLevel, type ExamLevel } from "@/lib/exam-levels";
-import { primaryClass, secondaryClass } from "./shared";
+import { Notice, primaryClass, secondaryClass, sendJson } from "./shared";
 import { MockExamsTable, type MockExamListItem } from "./mock-exams-table";
+import type { FreeMockIds } from "./set-free-mock-button";
 
 const PAGE_SIZE = 20;
 
@@ -18,15 +19,40 @@ export function MockExamLibrary({
   initialLevel,
   initialPage,
   archived,
+  freeMockIds = {},
+  canSetFreeMock = false,
+  freeMockReady = true,
 }: {
   exams: MockExamListItem[];
   managementReady: boolean;
   initialLevel?: ExamLevel;
   initialPage: number;
   archived: boolean;
+  freeMockIds?: FreeMockIds;
+  canSetFreeMock?: boolean;
+  freeMockReady?: boolean;
 }) {
   const [level, setLevel] = useState<ExamLevel | undefined>(initialLevel);
   const [page, setPage] = useState(initialPage);
+  const [freeMockOverride, setFreeMockOverride] = useState<{ source: FreeMockIds; values: FreeMockIds } | null>(null);
+  const [freeMockBusy, setFreeMockBusy] = useState(false);
+  const [notice, setNotice] = useState("");
+  const selectingFreeMock = useRef(false);
+  const selectedFreeMocks = freeMockOverride?.source === freeMockIds ? freeMockOverride.values : freeMockIds;
+
+  async function selectFreeMock(exam: { id: string; name: string; level: ExamLevel; revision: number }) {
+    if (selectingFreeMock.current || !canSetFreeMock || !freeMockReady) throw new Error("Please wait before changing the free mock.");
+    selectingFreeMock.current = true; setFreeMockBusy(true);
+    try {
+      const result = await sendJson("/api/dashboard/free-mock", "PUT", {
+        exam_id: exam.id, level: exam.level, revision: exam.revision,
+        previous_exam_id: selectedFreeMocks[exam.level] ?? null,
+      });
+      if (result.id !== exam.id) throw new Error("Unexpected response. Reload to verify the free mock selection.");
+      setFreeMockOverride({ source: freeMockIds, values: { ...selectedFreeMocks, [exam.level]: result.id } });
+      setNotice(`${exam.name} is now the ${exam.level} free mock for new trial registrations. Existing students and attempts are unchanged.`);
+    } finally { selectingFreeMock.current = false; setFreeMockBusy(false); }
+  }
 
   const filteredExams = useMemo(
     () => level ? exams.filter(exam => exam.level === level) : exams,
@@ -89,7 +115,9 @@ export function MockExamLibrary({
       <Link href={`/dashboard/exams?view=archived${level ? `&level=${level}` : ""}`} className={archived ? primaryClass : secondaryClass}>Archived mocks</Link>
     </nav>
     <div aria-live="polite" aria-atomic="true" className="sr-only">Showing {filteredExams.length} {level ? `${level} ` : ""}mock exams.</div>
-    <MockExamsTable exams={visibleExams} managementReady={managementReady} />
+    {canSetFreeMock && <p className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">Choose one published free mock per level using “Set as Free Mock”. Changes apply to new trial registrations only. Existing students keep their assigned paper and attempts.</p>}
+    {notice && <div className="mb-4"><Notice message={notice} /></div>}
+    <MockExamsTable exams={visibleExams} managementReady={managementReady} freeMockControls={canSetFreeMock ? { ids: selectedFreeMocks, busy: freeMockBusy, ready: freeMockReady, select: selectFreeMock } : undefined} />
     <div className="mt-5 flex items-center justify-between text-sm text-slate-500">
       <span>{filteredExams.length} mocks · Page {safePage} of {pageCount}</span>
       <div className="flex gap-2">

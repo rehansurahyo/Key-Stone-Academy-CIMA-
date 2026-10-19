@@ -57,7 +57,7 @@ signInError = { code: "over_request_rate_limit" }; assert.equal((await submitTri
 signInError = null; authError = { name: "NetworkError" }; const before = authCalls;
 assert.equal((await submitTrial()).status, 401); assert.equal(authCalls, before, "Unverifiable session must not be replaced");
 authError = null; user = { id: "guest", is_anonymous: true }; rpcError = { code: "P0002" };
-response = await submitTrial(); assert.equal(response.status, 503); assert.match((await response.json()).error, /Mock 1/);
+response = await submitTrial(); assert.equal(response.status, 503); assert.match((await response.json()).error, /free mock/);
 rpcError = { code: "PGRST202", message: "secret database details" };
 response = await submitTrial(); assert.equal(response.status, 503); assert.ok(!(await response.text()).includes("secret database"));
 rpcError = null;

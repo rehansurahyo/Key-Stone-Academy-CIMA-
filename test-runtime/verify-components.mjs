@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import React,{act} from '../node_modules/react/index.js';
 import {Window} from 'happy-dom';
 import {loader} from './component-loader.mjs';
+import {mkdir,writeFile} from 'node:fs/promises';
 
 const browser=new Window({url:'http://localhost:3001'});
 for(const key of ['document','HTMLElement','HTMLInputElement','HTMLTextAreaElement','HTMLSelectElement','Event','MouseEvent','CustomEvent','FormData','File','Blob','Node','NodeFilter','MutationObserver','ResizeObserver','Element','DocumentFragment'])globalThis[key]=browser[key];
@@ -65,6 +66,40 @@ await test('mock exam level tabs filter the already-loaded list instantly and up
     await click([...app.el.querySelectorAll('button')].find(button=>button.textContent==='All levels'));
     assert.equal(browser.location.search,'');assert.ok(app.el.textContent.includes('22 mocks · Page 1 of 2'));
   }finally{await app.unmount();}
+});
+
+await test('admin free-mock confirmation cancels safely, handles errors, moves one badge and preserves instant tabs; tutors have no controls',async()=>{
+  const first='00000000-0000-4000-8000-000000007701',second='00000000-0000-4000-8000-000000007702';
+  const exams=[{id:first,name:'OCS Mock 1',level:'OCS',status:'published'},{id:second,name:'OCS Mock 2',level:'OCS',status:'published'},{id:'mcs',name:'MCS Mock 1',level:'MCS',status:'published'},{id:'draft',name:'OCS Draft',level:'OCS',status:'draft'}].map(exam=>({...exam,description:'',revision:2,questions:[],materials:[],attemptCount:1}));
+  const calls=[];let fail=true;
+  globalThis.fetch=async(url,options)=>{calls.push({url,body:JSON.parse(options.body)});return Response.json(fail?{error:'Selection changed. Please reload.'}:{id:second},{status:fail?409:200});};
+  const props={exams,managementReady:true,initialPage:1,archived:false,canSetFreeMock:true,freeMockIds:{OCS:first}};
+  const app=await mount(MockExamLibrary,props);try{
+    const row=id=>[...app.el.querySelectorAll('tbody tr')].find(item=>item.textContent.includes(id));
+    assert.ok(row('OCS Mock 1').textContent.includes('Free mock'));
+    assert.equal(app.el.querySelector('[aria-label="Set OCS Draft as free mock"]'),null);
+    await click(app.el.querySelector('[aria-label="Set OCS Mock 2 as free mock"]'));
+    const dialog=()=>document.querySelector('[role=alertdialog]');
+    assert.ok(dialog().textContent.includes('Existing students keep their assigned mock'));
+    await mkdir('outputs/free-mock-layout',{recursive:true});
+    await writeFile('outputs/free-mock-layout/dialog.html',document.body.innerHTML);
+    await click([...dialog().querySelectorAll('button')].find(item=>item.textContent==='Cancel'));assert.equal(calls.length,0);
+    await click(app.el.querySelector('[aria-label="Set OCS Mock 2 as free mock"]'));
+    await click([...dialog().querySelectorAll('button')].find(item=>item.textContent==='Yes, Set as Free Mock'));
+    assert.match(dialog().querySelector('[role=alert]').textContent,/Selection changed/);
+    assert.ok(row('OCS Mock 1').textContent.includes('Free mock'));assert.ok(!row('OCS Mock 2').textContent.includes('Free mock'));
+    fail=false;
+    await click([...dialog().querySelectorAll('button')].find(item=>item.textContent==='Yes, Set as Free Mock'));
+    assert.equal(dialog(),null);assert.ok(row('OCS Mock 2').textContent.includes('Free mock'));assert.ok(!row('OCS Mock 1').textContent.includes('Free mock'));
+    assert.deepEqual(calls.at(-1),{url:'/api/dashboard/free-mock',body:{exam_id:second,level:'OCS',revision:2,previous_exam_id:first}});
+    const before=calls.length;
+    await click([...app.el.querySelectorAll('[role=tab]')].find(item=>item.textContent==='MCS'));
+    await click([...app.el.querySelectorAll('[role=tab]')].find(item=>item.textContent==='OCS'));
+    assert.equal(calls.length,before);assert.ok(row('OCS Mock 2').textContent.includes('Free mock'));
+    assert.ok(app.el.textContent.includes('Existing students and attempts are unchanged'));
+    await writeFile('outputs/free-mock-layout/table.html',app.el.outerHTML);
+  }finally{await app.unmount();}
+  const tutor=await mount(MockExamLibrary,{...props,canSetFreeMock:false});try{assert.equal(tutor.el.querySelector('[aria-label$="as free mock"]'),null);}finally{await tutor.unmount();}
 });
 
 await test('student review uses three clear sections and switches already-loaded level data without navigation',async()=>{
