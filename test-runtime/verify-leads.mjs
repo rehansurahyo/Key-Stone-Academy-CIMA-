@@ -22,16 +22,25 @@ const load = loader({
 const trial = load("app/api/free-trial/route.ts");
 const lead = load("app/api/dashboard/leads/[id]/route.ts");
 const request = (url, body, origin = "http://localhost:3001") => new Request(url, { method: "POST", headers: { Origin: origin, "Content-Type": "application/json" }, body: JSON.stringify(body) });
-let response = await trial.POST(request("http://localhost:3001/api/free-trial", { full_name: "Trial Student", email: "trial@example.com", phone: "+92 300 1234567", target_level: "MCS" }));
+let response = await trial.POST(request("http://localhost:3001/api/free-trial", { full_name: "Trial Student", email: "trial@example.com", phone: "03001234567", country: "PK", phone_country: "PK", target_level: "MCS" }));
 assert.equal(response.status, 201); assert.equal(authCalls, 1);
 assert.deepEqual(await response.json(), { received: true, redirect: "/dashboard" });
-assert.deepEqual(registered, [{ name: "register_free_trial", payload: { p_full_name: "Trial Student", p_email: "trial@example.com", p_phone: "+92 300 1234567", p_level: "MCS" } }]);
+assert.deepEqual(registered, [{ name: "register_free_trial_contact", payload: { p_full_name: "Trial Student", p_email: "trial@example.com", p_phone: "+923001234567", p_level: "MCS", p_country: "PK", p_phone_country: "PK", p_country_code: "+92" } }]);
 assert.equal((await trial.POST(request("http://localhost:3001/api/free-trial", { full_name: "", email: "wrong", phone: "1", target_level: "BAD" }))).status, 400);
 assert.equal((await trial.POST(request("http://localhost:3001/api/free-trial", { full_name: "A", email: "a@example.com", phone: "12345", target_level: "OCS" }, "https://invalid.example"))).status, 403);
-const details = { full_name: "Trial", email: "trial@example.test", phone: "123456", target_level: "OCS" };
+const details = { full_name: "Trial", email: "trial@example.test", phone: "03001234567", country: "PK", phone_country: "PK", target_level: "OCS" };
 const submitTrial = body => trial.POST(request("http://localhost:3001/api/free-trial", body ?? details));
+for (const invalid of [{country:'ZZ'}, {phone_country:'ZZ'}, {phone:'123'}, {phone:'+447911123456'}, {country:undefined}]) {
+  const before = registered.length;
+  assert.equal((await submitTrial({...details,...invalid})).status,400);
+  assert.equal(registered.length,before,'Invalid country/phone metadata must not reach registration');
+}
+response = await submitTrial({...details,country:'PK',phone_country:'GB',phone:'07911123456'});
+assert.equal(response.status,201);assert.equal(registered.at(-1).payload.p_phone,'+447911123456');
+assert.equal(registered.at(-1).payload.p_country,'PK');assert.equal(registered.at(-1).payload.p_country_code,'+44');
+const authCallsBeforeGuestReuse = authCalls;
 user = { id: "guest", is_anonymous: true }; authError = null;
-assert.equal((await submitTrial()).status, 201); assert.equal(authCalls, 1, "Existing guest session reused");
+assert.equal((await submitTrial()).status, 201); assert.equal(authCalls, authCallsBeforeGuestReuse, "Existing guest session reused");
 for (const role of ["student", "tutor", "admin"]) {
   user = { id: role, is_anonymous: false };
   const before = registered.length;

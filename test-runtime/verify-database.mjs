@@ -71,6 +71,10 @@ try {
   assert.equal((await db.query("select access_type from public.profiles where id='00000000-0000-4000-8000-000000009871'")).rows[0].access_type,'enrolled','Existing enrolled students retain full access');
   await db.exec("delete from auth.users where id in ('00000000-0000-4000-8000-000000009870','00000000-0000-4000-8000-000000009871')");
   await db.exec(await readFile(new URL('../supabase/tests/student_trial_access.sql',import.meta.url),'utf8'));
+  const contactDetails = await readFile(new URL('../supabase/migrations/20261019_trial_lead_contact_details.sql',import.meta.url),'utf8');
+  await db.exec(contactDetails); await db.exec(contactDetails);
+  await db.exec(await readFile(new URL('../supabase/tests/trial_lead_contact_details.sql',import.meta.url),'utf8'));
+  console.log('PASS: contact SQL: country and phone prefix persist atomically, duplicates preserve original details, guest reads/updates are denied, and legacy leads/RPC remain valid');
   console.log('PASS: trial RLS: one fixed Mock 1, five visible catalog cards, locked content/storage/attempts, lead idempotency, no self-enrollment, enrolled access and autosave/timer/submission persistence');
 } catch(error) {
   console.error('FAIL: SQL/RLS test',error.message,error.code,error.where);

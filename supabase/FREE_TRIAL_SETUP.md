@@ -1,6 +1,8 @@
 # One-mock guest trial setup
 
 1. Run `migrations/20261019_student_trial_access.sql` after all earlier migrations.
+   Then run `migrations/20261019_trial_lead_contact_details.sql` for the Country
+   and phone-country-code form update, before deploying that update.
 2. In Supabase Authentication settings, enable **Anonymous Sign-ins**. No email or
    password is created for a lead. Do not disable existing email/password login.
 3. Recommended before exposing the public form: enable Cloudflare Turnstile in
@@ -44,6 +46,12 @@
   Auth users default to trial; role/access fields cannot be self-promoted.
 - Lead email/phone are **unverified contact details**, not login credentials.
   Entering an existing student's email never logs in as or modifies that student.
+- The form stores residence `country` and independent `phone_country` as country
+  codes, `country_code` as the calling prefix, and `phone` in E.164 international
+  format. Country selection suggests a prefix; learners can override it without
+  changing their residence. Phone parsing uses pinned libphonenumber metadata,
+  not string concatenation. Older leads retain null country fields and their
+  original phone text; the Admin Leads table displays them as “Not provided”.
 - A guest can resume in the same browser while its cookies remain. Signing out,
   clearing cookies or using another device loses that guest identity. A contact
   form alone cannot securely guarantee one trial per human/email; that would

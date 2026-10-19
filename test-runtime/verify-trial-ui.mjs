@@ -5,7 +5,7 @@ import { loader } from './component-loader.mjs';
 
 const browser = new Window({ url: 'http://localhost:3001/student/login' });
 globalThis.window = browser;
-for (const key of ['document','HTMLElement','HTMLInputElement','Event','MouseEvent','FormData','Node']) globalThis[key] = browser[key];
+for (const key of ['document','HTMLElement','HTMLInputElement','HTMLSelectElement','Event','MouseEvent','FormData','Node']) globalThis[key] = browser[key];
 Object.defineProperty(globalThis, 'navigator', { value: browser.navigator, configurable: true });
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 const { createRoot } = await import('../node_modules/react-dom/client.js');
@@ -13,11 +13,15 @@ let signOutError = null, signOutCalls = 0;
 const load = loader({
   'next/link': { __esModule: true, default: ({ children, href, ...props }) => React.createElement('a', { href, ...props }, children) },
   'next/script': { __esModule: true, default: () => null },
+  'next/navigation': { useRouter: () => ({refresh() {}}) },
   '@/lib/supabase/client': { createClient: () => ({ auth: { signOut: async options => { assert.equal(options.scope, 'local'); signOutCalls++; return { error: signOutError }; } } }) },
 });
 const { StudentSignIn } = load('components/student-sign-in.tsx');
 const { StudentMockDashboard } = load('components/student-mock-dashboard.tsx');
 const { studentMockCards } = load('lib/student-mocks.ts');
+const { LeadsTable } = load('components/dashboard/leads-table.tsx');
+const { normalizeTrialContact } = load('lib/trial-contact.ts');
+const { COUNTRIES, resolveCountry } = load('lib/countries.ts');
 const host = document.createElement('div'); document.body.append(host);
 const root = createRoot(host);
 const navigations = []; browser.location.assign = destination => navigations.push(destination);
@@ -29,13 +33,31 @@ globalThis.fetch = async (url, options) => {
   return Response.json({ received: true, redirect: '/dashboard' }, { status: 201 });
 };
 const click = async button => { assert.ok(button); await act(async () => button.click()); };
+const change = async (input,value) => {
+  const prototype=input.tagName==='SELECT'?HTMLSelectElement.prototype:HTMLInputElement.prototype;
+  await act(async()=>{Object.getOwnPropertyDescriptor(prototype,'value').set.call(input,value);input.dispatchEvent(new Event('input',{bubbles:true}));input.dispatchEvent(new Event('change',{bubbles:true}));});
+};
 try {
+  assert.ok(COUNTRIES.length>240);assert.equal(resolveCountry('PK').name,'Pakistan');
+  assert.equal(normalizeTrialContact('PK','PK','03001234567').phone,'+923001234567');
+  assert.equal(normalizeTrialContact('IT','IT','02 36618 300').phone,'+390236618300','Italian leading zero must be preserved');
+  assert.equal(normalizeTrialContact('CA','US','202 555 0123').phone,'+12025550123','Shared calling codes work');
+  assert.throws(()=>normalizeTrialContact('PK','PK','+447911123456'),/matching/);
+  assert.throws(()=>normalizeTrialContact('ZZ','PK','03001234567'),/country/);
   await act(async () => root.render(React.createElement(StudentSignIn, { loading: false, configured: true, error: null, onSignIn: async () => true })));
-  await click([...host.querySelectorAll('button')].find(button => button.textContent === 'Get 1 Free Trial'));
+  await click([...host.querySelectorAll('button')].find(button => button.textContent === 'Access Free Mock'));
   const trialForm = host.querySelector('[role="dialog"] form');
   assert.ok(trialForm); assert.equal(trialForm.parentElement.closest('form'), null, 'Trial form must not nest inside login form');
   assert.equal(trialForm.querySelector('input[type="password"]'), null, 'Trial must not request a password');
-  for (const [name, value] of Object.entries({ full_name: 'Trial Candidate', email: 'trial@example.test', phone: '123456789', target_level: 'OCS' })) trialForm.elements.namedItem(name).value = value;
+  assert.ok(trialForm.textContent.includes('Case Study'));assert.ok(!trialForm.textContent.includes('Target Level'));
+  const countryInput=trialForm.querySelector('[aria-label="Country"]');
+  assert.equal(trialForm.querySelectorAll('datalist option').length,COUNTRIES.length);
+  await change(countryInput,'Pakistan');
+  assert.equal(trialForm.elements.namedItem('country').value,'PK');assert.equal(trialForm.elements.namedItem('phone_country').value,'PK');
+  await change(trialForm.elements.namedItem('phone_country'),'GB');
+  assert.equal(trialForm.elements.namedItem('country').value,'PK','Manual phone code must not change residence');
+  await change(trialForm.elements.namedItem('phone_country'),'PK');
+  for (const [name, value] of Object.entries({ full_name: 'Trial Candidate', email: 'trial@example.test', phone: '03001234567', target_level: 'OCS' })) trialForm.elements.namedItem(name).value = value;
   await act(async () => trialForm.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })));
   assert.match(host.querySelector('[role="alert"]').textContent, /Network interrupted/);
   assert.equal(trialForm.elements.namedItem('full_name').value, 'Trial Candidate');
@@ -49,7 +71,7 @@ try {
   assert.deepEqual(navigations, ['/dashboard']);
   assert.equal(calls.length, 2, 'Double submission sends only one request');
   assert.equal(calls[1].options.credentials, 'same-origin');
-  assert.deepEqual(JSON.parse(calls[1].options.body), { full_name: 'Trial Candidate', email: 'trial@example.test', phone: '123456789', target_level: 'OCS' });
+  assert.deepEqual(JSON.parse(calls[1].options.body), { full_name: 'Trial Candidate', email: 'trial@example.test', phone: '+923001234567', country:'PK', phone_country:'PK', target_level: 'OCS' });
   console.log('PASS: real form opens without nested forms/password signup, preserves fields on network failure, retries safely and redirects to dashboard once');
 
   const exams = Array.from({ length: 5 }, (_, index) => ({ id: `mock-${index+1}`, name: `OCS Mock ${index+1}`, description: 'Published paper', status: 'published', level: 'OCS' }));
@@ -78,6 +100,11 @@ try {
   assert.equal(host.querySelectorAll('a[href^="/exam/"]').length, 5);
   assert.equal(host.querySelector('[aria-label="Free trial access"]'), null);
   console.log('PASS: trial dashboard renders all five papers with exactly four locks; instant level tabs use no network; enrolled students retain all five start links');
+  const lead={id:'contact-lead',full_name:'Contact Candidate',email:'contact@example.test',phone:'+447911123456',country:'PK',phone_country:'GB',country_code:'+44',target_level:'OCS',status:'new',admin_notes:'',created_at:'2026-10-19T00:00:00Z'};
+  await act(async()=>root.render(React.createElement(LeadsTable,{leads:[lead,{...lead,id:'legacy-lead',full_name:'Legacy Candidate',country:null,phone_country:null,country_code:null}]})));
+  assert.ok(host.textContent.includes('Pakistan'));assert.ok(host.textContent.includes('United Kingdom'));assert.ok(host.textContent.includes('Phone code: +44'));assert.ok(host.textContent.includes('Not provided'));
+  await change(host.querySelector('input'),'Pakistan');assert.equal(host.querySelectorAll('tbody tr').length,1);assert.ok(host.textContent.includes('Contact Candidate'));assert.ok(!host.textContent.includes('Legacy Candidate'));
+  console.log('PASS: country auto-prefix/manual overrides, international parsing and admin country search/display preserve legacy leads');
 } finally {
   await act(async () => root.unmount());
   globalThis.fetch = previousFetch; await browser.happyDOM.close();

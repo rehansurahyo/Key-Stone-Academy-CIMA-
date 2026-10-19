@@ -1,10 +1,13 @@
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
+import { normalizeTrialContact } from "@/lib/trial-contact";
 
 const leadSchema = z.object({
   full_name: z.string().trim().min(1).max(150),
   email: z.string().trim().email().max(254),
   phone: z.string().trim().min(5).max(50),
+  country: z.string().length(2),
+  phone_country: z.string().length(2),
   target_level: z.enum(["OCS", "MCS", "SCS"]),
   captcha_token: z.string().max(4096).optional(),
 }).strict();
@@ -16,8 +19,11 @@ export async function POST(request: Request) {
   }
   const parsed = leadSchema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) {
-    return Response.json({ error: "Enter your name, email, phone number and target level." }, { status: 400 });
+    return Response.json({ error: "Enter your name, email, country, phone country code and case study." }, { status: 400 });
   }
+  let contact: ReturnType<typeof normalizeTrialContact>;
+  try { contact = normalizeTrialContact(parsed.data.country, parsed.data.phone_country, parsed.data.phone); }
+  catch (error) { return Response.json({ error: error instanceof Error ? error.message : "Invalid contact details." }, { status: 400 }); }
   try {
     const supabase = await createClient();
     const { data: identity, error: identityError } = await supabase.auth.getUser();
@@ -40,9 +46,10 @@ export async function POST(request: Request) {
         { status: disabled ? 503 : 429, headers: { "Cache-Control": "private, no-store" } });
       }
     }
-    const { full_name, email, phone, target_level } = parsed.data;
-    const { error } = await supabase.rpc("register_free_trial", {
-      p_full_name: full_name, p_email: email, p_phone: phone, p_level: target_level,
+    const { full_name, email, target_level } = parsed.data;
+    const { error } = await supabase.rpc("register_free_trial_contact", {
+      p_full_name: full_name, p_email: email, p_phone: contact.phone, p_level: target_level,
+      p_country: contact.country, p_phone_country: contact.phone_country, p_country_code: contact.country_code,
     });
     if (error) {
       return Response.json({ error: error.code === "P0002"
