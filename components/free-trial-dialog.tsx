@@ -2,6 +2,7 @@
 
 import { FormEvent, useId, useRef, useState } from "react";
 import { Loader2, Sparkles, X } from "lucide-react";
+import Image from "next/image";
 import { TrialCaptcha } from "@/components/trial-captcha";
 import { type CountryCode } from "@/lib/countries";
 import { PhoneCodeSelect } from "@/components/phone-code-select";
@@ -52,7 +53,7 @@ export function FreeTrialDialog({ initiallyOpen = false }: { initiallyOpen?: boo
     </button>
     {open && <div role="dialog" aria-modal="true" aria-labelledby={`${id}-title`} aria-describedby={`${id}-description`} className="free-mock-overlay fixed inset-0 z-[100] grid place-items-center bg-[#07182c]/65 backdrop-blur-[3px]">
       <section className="free-mock-panel rounded-2xl border border-white/20 bg-white text-left shadow-[0_24px_80px_rgba(0,0,0,.3)]">
-        <header className="relative border-t-[3px] border-amber-400 bg-[#0B2545] px-6 py-5 pr-14 text-white"><div className="mb-2 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-amber-300"><Sparkles className="size-3.5" />Keystone Academia</div><h2 id={`${id}-title`} className="text-xl font-semibold tracking-tight">Claim your free trial</h2><p id={`${id}-description`} className="mt-1.5 text-[13px] leading-5 text-blue-100">Tell us which CIMA case-study level you are preparing for.</p><button type="button" disabled={busy} aria-label="Close free trial form" onClick={() => setOpen(false)} className="absolute right-4 top-4 rounded-md p-1.5 text-blue-100 transition hover:bg-white/15 focus-visible:outline-2 focus-visible:outline-amber-300 disabled:opacity-40"><X className="size-5" /></button></header>
+        <header className="relative border-t-[3px] border-amber-400 bg-[#0B2545] px-6 py-5 pr-14 text-white"><div className="mb-3 w-[200px] max-w-full rounded-lg bg-white p-1.5"><Image src="/keystone-cima-logo.png" alt="Keystone Academia — CIMA Global Learning Provider" width={1470} height={500} unoptimized loading="eager" className="h-auto w-full" /></div><h2 id={`${id}-title`} className="text-xl font-semibold tracking-tight">Claim your free trial</h2><p id={`${id}-description`} className="mt-1.5 text-[13px] leading-5 text-blue-100">Tell us which CIMA case-study level you are preparing for.</p><button type="button" disabled={busy} aria-label="Close free trial form" onClick={() => setOpen(false)} className="absolute right-4 top-4 rounded-md p-1.5 text-blue-100 transition hover:bg-white/15 focus-visible:outline-2 focus-visible:outline-amber-300 disabled:opacity-40"><X className="size-5" /></button></header>
         <form onSubmit={submit} className="free-mock-form"><fieldset disabled={busy} className="free-mock-fields">
           <div className="free-mock-name-email">
           <label className={labelClass}>Full Name<input required name="full_name" autoComplete="name" maxLength={150} placeholder="Enter your full name" className={fieldClass} /></label>
@@ -63,7 +64,6 @@ export function FreeTrialDialog({ initiallyOpen = false }: { initiallyOpen?: boo
           <TrialCaptcha key={captchaKey} onToken={setCaptchaToken} />
           {error && <p role="alert" className="border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-800">{error}</p>}
           <button disabled={busy || Boolean(process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY && !captchaToken)} className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-lg border border-amber-500 bg-amber-400 text-sm font-bold text-[#0B2545] shadow-sm transition hover:bg-amber-300 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0B2545] active:translate-y-px disabled:cursor-not-allowed disabled:opacity-50">{busy && <Loader2 className="size-4 animate-spin" />}{busy ? "Opening your dashboard…" : "Access Free Mock"}</button>
-          <p className="text-center text-xs leading-5 text-slate-500">Your dashboard opens immediately. Try one selected mock free; remaining mocks require enrolment.</p>
           <p className="text-center text-[11px] leading-4 text-slate-400">Keep your browser data to resume your trial.</p>
         </fieldset></form>
       </section>

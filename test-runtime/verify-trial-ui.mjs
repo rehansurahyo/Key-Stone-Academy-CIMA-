@@ -16,6 +16,7 @@ let signOutError = null, signOutCalls = 0;
 const load = loader({
   'next/link': { __esModule: true, default: ({ children, href, ...props }) => React.createElement('a', { href, ...props }, children) },
   'next/script': { __esModule: true, default: () => null },
+  'next/image': { __esModule: true, default: ({unoptimized, ...props}) => React.createElement('img', props) },
   'next/navigation': { useRouter: () => ({refresh() {}}) },
   '@/lib/supabase/client': { createClient: () => ({ auth: { signOut: async options => { assert.equal(options.scope, 'local'); signOutCalls++; return { error: signOutError }; } } }) },
 });
@@ -52,6 +53,10 @@ try {
   await click([...host.querySelectorAll('button')].find(button => button.textContent === 'Access Free Mock'));
   const trialForm = host.querySelector('[role="dialog"] form');
   assert.ok(trialForm); assert.equal(trialForm.parentElement.closest('form'), null, 'Trial form must not nest inside login form');
+  assert.equal(host.querySelector('[role="dialog"] header img').getAttribute('src'),'/keystone-cima-logo.png');
+  assert.ok(!trialForm.textContent.includes('Your dashboard opens immediately.'));
+  assert.ok(!trialForm.textContent.includes('remaining mocks require enrolment.'));
+  assert.ok(trialForm.textContent.includes('Keep your browser data to resume your trial.'),'Uncircled browser-session note remains');
   assert.equal(trialForm.querySelector('input[type="password"]'), null, 'Trial must not request a password');
   assert.ok(trialForm.textContent.includes('Case Study'));assert.ok(!trialForm.textContent.includes('Target Level'));
   assert.equal(trialForm.querySelector('[aria-label="Country"]'),null,'No separate Country field');

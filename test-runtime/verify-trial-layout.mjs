@@ -22,6 +22,12 @@ try {
     await page.goto(`${base}/free-trial`);
     const dialog = page.getByRole('dialog', { name: 'Claim your free trial', exact: true });
     await dialog.waitFor();
+    const logo = dialog.getByRole('img', { name: 'Keystone Academia — CIMA Global Learning Provider' });
+    await logo.waitFor();
+    await logo.evaluate(image => image.decode());
+    assert.equal(await logo.evaluate(image => image.naturalWidth > 0), true, 'Official logo loads');
+    assert.equal(await dialog.getByText('Your dashboard opens immediately.', { exact: false }).count(), 0);
+    assert.ok((await dialog.textContent()).includes('Keep your browser data to resume your trial.'));
     await page.getByLabel('Full Name', { exact: true }).fill('Layout Test');
     await page.getByLabel('Email Address', { exact: true }).fill('layout@example.test');
     assert.equal(await page.getByLabel('Country', { exact: true }).count(), 0);
