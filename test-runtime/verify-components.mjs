@@ -23,6 +23,7 @@ const {MockExamLibrary}=load('components/dashboard/mock-exam-library.tsx');
 const {ExamTaskList}=load('components/exam-task-list.tsx');
 const {GradingForm}=load('components/dashboard/grading-form.tsx');
 const {SubmissionTable}=load('components/dashboard/submission-table.tsx');
+const {SubmissionCleanupQueue}=load('components/dashboard/delete-submission-button.tsx');
 const {default:StaffLogin}=load('app/staff/login/page.tsx');
 const {UserManagement}=load('components/dashboard/user-management.tsx');
 const {DashboardShell}=load('components/dashboard/dashboard-shell.tsx');
@@ -35,6 +36,42 @@ async function change(el,value){const setter=Object.getOwnPropertyDescriptor(el.
 async function click(el){await act(async()=>el.click());}
 async function submit(el){await act(async()=>{el.dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}));await new Promise(r=>setTimeout(r,10));});}
 const label=(el,text)=>[...el.querySelectorAll('label')].find(l=>l.textContent.startsWith(text)).querySelector('input,textarea,select');
+await test('submission deletion confirms exact attempt, cancels without requests, rejects double submits, reports errors and removes only the selected row',async()=>{
+  const record={id:'00000000-0000-4000-8000-000000007800',revision:2,student:{full_name:'Test Student',email:'test@example.invalid'},exam:{name:'SCS Mock 1'},status:'graded',score:75,submitted_at:'2026-10-20T00:00:00Z'};
+  const submissions=[record,{...record,id:'second',student:{full_name:'Other Student'}}];
+  const calls=[];let fail=true,resolveResponse;
+  globalThis.fetch=async(url,options)=>{calls.push({url,body:JSON.parse(options.body)});if(resolveResponse===null)return new Promise(resolve=>{resolveResponse=resolve;});return Response.json(fail?{error:'This submission changed. Reload.'}:{deleted:true,cleanup_pending:false,pending_files:0},{status:fail?409:200});};
+  let app=await mount(SubmissionTable,{submissions});
+  assert.equal(app.el.querySelector('button[aria-label^="Delete submission"]'),null,'Tutor/default table has no delete action');await app.unmount();
+  app=await mount(SubmissionTable,{submissions,canDelete:true});
+  try {
+    const open=async()=>click(app.el.querySelector('button[aria-label^="Delete submission by Test Student"]'));
+    const dialog=()=>document.querySelector('[role=alertdialog]');
+    await open();assert.ok(dialog().textContent.includes('Test Student — SCS Mock 1'));assert.ok(dialog().textContent.includes('cannot be undone'));
+    assert.equal(dialog().querySelectorAll('a[href*="/answers?format="]').length,2);
+    const confirm=()=>[...dialog().querySelectorAll('button')].find(button=>button.textContent==='Delete permanently');
+    assert.equal(confirm().disabled,true);await change(dialog().querySelector('input'),'delete');assert.equal(confirm().disabled,true);
+    await click([...dialog().querySelectorAll('button')].find(button=>button.textContent==='Cancel'));assert.equal(calls.length,0);
+    await open();await change(dialog().querySelector('input'),'DELETE');await click(confirm());
+    assert.match(dialog().querySelector('[role=alert]').textContent,/submission changed/);assert.ok(app.el.textContent.includes('Test Student'));
+    assert.equal(uploadToasts.at(-1).kind,'error');
+    await mkdir('outputs/submission-deletion-layout',{recursive:true});await writeFile('outputs/submission-deletion-layout/dialog.html',document.body.innerHTML);
+    fail=false;resolveResponse=null;
+    await act(async()=>{confirm().click();confirm()?.click();});
+    assert.equal(calls.length,2,'Only one in-flight retry is issued');assert.ok(dialog().textContent.includes('Deleting…'));
+    assert.equal([...dialog().querySelectorAll('button')].find(button=>button.textContent==='Cancel').disabled,true);
+    await act(async()=>resolveResponse(Response.json({deleted:true,cleanup_pending:true,pending_files:1})));
+    assert.equal(dialog(),null);assert.ok(!app.el.textContent.includes('Test Student'));assert.ok(app.el.textContent.includes('Other Student'));
+    assert.equal(uploadToasts.at(-1).kind,'warning');assert.deepEqual(calls.at(-1).body,{revision:2,confirmation:'DELETE'});
+  }finally{await app.unmount();}
+});
+await test('persistent report cleanup retries visibly and disappears only after confirmed success',async()=>{
+  const job={submission_id:'00000000-0000-4000-8000-000000007800',submission_revision:2,pending_files:1};
+  let fail=true;
+  globalThis.fetch=async()=>Response.json({deleted:true,cleanup_pending:fail,pending_files:fail?1:0});
+  const app=await mount(SubmissionCleanupQueue,{jobs:[job]});
+  try{await click(app.el.querySelector('button'));assert.match(app.el.querySelector('[role=alert]').textContent,/still pending/);fail=false;await click(app.el.querySelector('button'));assert.equal(app.el.textContent,'');assert.equal(uploadToasts.at(-1).kind,'success');}finally{await app.unmount();}
+});
 await test('dashboard shell renders real branding, highlights current route, toggles sidebar and keeps tutor navigation restricted',async()=>{
   for(const role of ['admin','tutor']){
     const app=await mount(DashboardShell,{profile:{role,full_name:'Test Staff',email:'staff@example.invalid'},children:React.createElement('h1',null,'Workspace content')});try{
@@ -242,6 +279,28 @@ await test('grading form sends score, feedback and revision; stale grade exposes
 });
 await test('submissions table renders student, exam, pending/graded scores and review links',async()=>{
   const app=await mount(SubmissionTable,{submissions:[submission,{...submission,id:'graded-test',status:'graded',score:0}]});try{assert.ok(app.el.textContent.includes('Test Student'));assert.ok(app.el.textContent.includes('Awaiting review'));assert.ok(app.el.textContent.includes('0/100'));assert.equal(app.el.querySelector('a').getAttribute('href'),'/dashboard/submissions/submission-test');}finally{await app.unmount();}
+});
+await test('tiny red Free Trial badge follows the student profile, not grading state, email or first attempt',async()=>{
+  const records=[
+    {...submission,id:'trial-new',student:{...submission.student,access_type:'trial'}},
+    {...submission,id:'trial-graded',status:'graded',score:75,student:{...submission.student,access_type:'trial'}},
+    {...submission,id:'enrolled',student:{...submission.student,access_type:'enrolled'}},
+    {...submission,id:'legacy'},
+    {...submission,id:'missing-student',student:null},
+  ];
+  const app=await mount(SubmissionTable,{submissions:records});
+  try{
+    const rows=[...app.el.querySelectorAll('tbody tr')];
+    assert.equal(rows.length,5);
+    for(let i=0;i<rows.length;i++){
+      const badge=rows[i].querySelector('[title="Free-trial student account"]');
+      assert.equal(Boolean(badge),i<2);
+      if(badge){assert.equal(badge.textContent,'Free Trial');assert.ok(badge.classList.contains('text-red-700'));assert.ok(badge.classList.contains('text-[10px]'));}
+    }
+    assert.equal(rows[0].querySelector('a').getAttribute('href'),'/dashboard/submissions/trial-new');
+    assert.ok(rows[1].textContent.includes('75/100'));
+    await mkdir('outputs/trial-badge-layout',{recursive:true});await writeFile('outputs/trial-badge-layout/table.html',app.el.outerHTML);
+  }finally{await app.unmount();}
 });
 await test('staff login verifies server cookie before document navigation; auth/access/cookie/network errors remain visible',async()=>{
   for(const [postStatus,getStatus,message] of [[200,200,null],[401,200,'Invalid login credentials'],[403,200,'Active staff only'],[200,401,'session cookie was not saved'],[200,403,'You do not have access']]){

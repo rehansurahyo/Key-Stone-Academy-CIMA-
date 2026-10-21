@@ -59,6 +59,6 @@ export type Submission = {
   graded_at: string | null;
   graded_by: string | null;
   revision: number;
-  student: Pick<Profile, "full_name" | "email"> | null;
+  student: (Pick<Profile, "full_name" | "email"> & Partial<Pick<Profile, "access_type">>) | null;
   exam: Pick<MockExam, "name"> | null;
 };

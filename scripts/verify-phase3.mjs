@@ -1,11 +1,9 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
-import ts from "typescript";
+import { loader } from "../test-runtime/component-loader.mjs";
 
-// Test the real Zod schemas without requiring an additional TS test runner.
-const source = await readFile(new URL("../lib/dashboard/validation.ts", import.meta.url), "utf8");
-const js = ts.transpile(source.replace('from "zod"', `from ${JSON.stringify(new URL("../node_modules/zod/index.js", import.meta.url).href)}`), { module: ts.ModuleKind.ESNext });
-const { mockSchema, gradeSchema, newUserSchema, updateUserSchema } = await import(`data:text/javascript;base64,${Buffer.from(js).toString("base64")}`);
+// Resolve real schema dependencies (including the shared password policy),
+// rather than importing a data URL that cannot resolve local path aliases.
+const { mockSchema, gradeSchema, newUserSchema, updateUserSchema } = loader()("lib/dashboard/validation.ts");
 const question = { from: "Finance Director", to: "Senior Manager", subject: "Funding", intro: "Evaluate the proposed investment.", taskPrompt: "Prepare a memo.", subtasks: [{description:"Discuss strategy",weightage:20},{description:"Discuss funding",weightage:30},{description:"Discuss risk",weightage:50}] };
 assert.equal(mockSchema.parse({ name: "CIMA Mock", status: "published", questions: [question] }).questions[0].timeMinutes, 60);
 assert.equal(mockSchema.safeParse({ name: "CIMA Mock", status: "published", questions: [] }).success, false);
@@ -15,11 +13,11 @@ for (const subtasks of [[],[{description:"Task",weightage:99}],[{description:"Ta
 }
 assert.equal(mockSchema.safeParse({name:"Marks Mock",status:"published",questions:[{...question,weightageUnit:"marks",subtasks:[{description:"Task",weightage:37.5}]}]}).success,true);
 assert.equal(mockSchema.parse({name:"Decimal Mock",status:"draft",questions:[{...question,subtasks:[{description:"A",weightage:33.33},{description:"B",weightage:33.33},{description:"C",weightage:33.34}]}]}).questions[0].subtasks.length,3);
-assert.equal(gradeSchema.safeParse({ score: 101, feedback: "Good", revision: 0 }).success, false);
-assert.equal(gradeSchema.safeParse({ score: 0, feedback: "  ", revision: 0 }).success, false);
-assert.equal(gradeSchema.safeParse({ score: 0, feedback: "No credit", revision: 0 }).success, true);
+assert.equal(gradeSchema.safeParse({ score: 101, feedback: "Good", status: "draft", revision: 0 }).success, false);
+assert.equal(gradeSchema.safeParse({ score: 0, feedback: "  ", status: "draft", revision: 0 }).success, false);
+assert.equal(gradeSchema.safeParse({ score: 0, feedback: "No credit", status: "draft", revision: 0 }).success, true);
 assert.equal(newUserSchema.safeParse({ email: "admin@example.com", full_name: "A", password: "a-long-password", role: "admin" }).success, false);
-assert.equal(updateUserSchema.safeParse({ full_name: "A", role: "admin", is_active: true }).success, false);
+assert.equal(updateUserSchema.safeParse({ full_name: "A", role: "admin", is_active: true, assigned_level: "SCS" }).success, false);
 console.log("PASS: exam defaults, invalid timers/weights, grading bounds, role assignment validation");
 
 if (process.argv[2]) {

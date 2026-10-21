@@ -14,7 +14,7 @@ export default async function Overview({ searchParams }: { searchParams: Promise
     supabase.from("submissions").select("id", { count: "exact", head: true }).eq("status", "submitted"),
     supabase.from("submissions").select("id", { count: "exact", head: true }).eq("status", "graded"),
     supabase.from("profiles").select("id", { count: "exact", head: true }).eq("role", "student"),
-    supabase.from("submissions").select("*, student:profiles!submissions_student_id_fkey(full_name,email), exam:exams(name)").order("submitted_at", { ascending: false }).limit(5),
+    supabase.from("submissions").select("*, student:profiles!submissions_student_id_fkey(full_name,email,access_type), exam:exams(name)").order("submitted_at", { ascending: false }).limit(5),
   ]);
   for (const result of results) if (result.error) throw result.error;
   const cards = [

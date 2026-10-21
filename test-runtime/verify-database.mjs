@@ -75,6 +75,10 @@ try {
   await db.exec(contactDetails); await db.exec(contactDetails);
   await db.exec(await readFile(new URL('../supabase/tests/trial_lead_contact_details.sql',import.meta.url),'utf8'));
   console.log('PASS: contact SQL: country and phone prefix persist atomically, duplicates preserve original details, guest reads/updates are denied, and legacy leads/RPC remain valid');
+  const deletion = await readFile(new URL('../supabase/migrations/20261021_admin_submission_deletion.sql',import.meta.url),'utf8');
+  await db.exec(deletion); await db.exec(deletion);
+  await db.exec(await readFile(new URL('../supabase/tests/admin_submission_deletion.sql',import.meta.url),'utf8'));
+  console.log('PASS: admin deletion SQL: scoped cascades, stale revision/unfinished attempt denial, persistent file cleanup, verified acknowledgment, idempotent retries and other students/accounts/leads/grants preserved');
   console.log('PASS: trial RLS: one fixed Mock 1, five visible catalog cards, locked content/storage/attempts, lead idempotency, no self-enrollment, enrolled access and autosave/timer/submission persistence');
 } catch(error) {
   console.error('FAIL: SQL/RLS test',error.message,error.code,error.where);

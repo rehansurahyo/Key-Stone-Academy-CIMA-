@@ -1,6 +1,10 @@
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 const root=fileURLToPath(new URL('../',import.meta.url));
+const trialBadges=spawnSync(process.execPath,['test-runtime/verify-trial-badges.mjs'],{cwd:root,stdio:'inherit'});
+if(trialBadges.status!==0)process.exit(trialBadges.status??1);
+const deletionApi=spawnSync(process.execPath,['test-runtime/verify-submission-deletion-api.mjs'],{cwd:root,stdio:'inherit'});
+if(deletionApi.status!==0)process.exit(deletionApi.status??1);
 const levelSave=spawnSync(process.execPath,['test-runtime/verify-trial-level-save.mjs'],{cwd:root,stdio:'inherit'});
 if(levelSave.status!==0)process.exit(levelSave.status??1);
 const freeMockApi=spawnSync(process.execPath,['test-runtime/verify-free-mock-api.mjs'],{cwd:root,stdio:'inherit'});
