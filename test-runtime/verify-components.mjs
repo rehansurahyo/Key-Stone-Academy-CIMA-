@@ -23,6 +23,7 @@ const {MockExamLibrary}=load('components/dashboard/mock-exam-library.tsx');
 const {ExamTaskList}=load('components/exam-task-list.tsx');
 const {GradingForm}=load('components/dashboard/grading-form.tsx');
 const {SubmissionTable}=load('components/dashboard/submission-table.tsx');
+const {LeadsTable}=load('components/dashboard/leads-table.tsx');
 const {SubmissionCleanupQueue}=load('components/dashboard/delete-submission-button.tsx');
 const {default:StaffLogin}=load('app/staff/login/page.tsx');
 const {UserManagement}=load('components/dashboard/user-management.tsx');
@@ -36,6 +37,39 @@ async function change(el,value){const setter=Object.getOwnPropertyDescriptor(el.
 async function click(el){await act(async()=>el.click());}
 async function submit(el){await act(async()=>{el.dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}));await new Promise(r=>setTimeout(r,10));});}
 const label=(el,text)=>[...el.querySelectorAll('label')].find(l=>l.textContent.startsWith(text)).querySelector('input,textarea,select');
+await test('lead export preserves search and forms, shows network/auth/file errors, guards double clicks and downloads the XLSX without navigation',async()=>{
+  const lead={id:'lead',full_name:'Test Lead',email:'lead@example.test',phone:'+923001234567',phone_country:'PK',country_code:'+92',target_level:'OCS',status:'new',admin_notes:'',created_at:'2026-10-23T00:00:00Z'};
+  const calls=[],downloads=[],urls=[],revoked=[];let mode='network',resolveResponse;
+  const originalCreate=URL.createObjectURL,originalRevoke=URL.revokeObjectURL,originalClick=browser.HTMLAnchorElement.prototype.click;
+  URL.createObjectURL=blob=>{urls.push(blob);return 'blob:test-export';};URL.revokeObjectURL=url=>revoked.push(url);
+  browser.HTMLAnchorElement.prototype.click=function(){downloads.push({href:this.href,filename:this.download});};
+  globalThis.fetch=async(url,options)=>{
+    calls.push({url,options});
+    if(mode==='network')throw Error('Network interrupted');
+    if(mode==='auth')return Response.json({error:'Please sign in to continue.'},{status:401});
+    if(mode==='html')return new Response('<html>Login</html>',{headers:{'Content-Type':'text/html'}});
+    if(mode==='pending')return new Promise(resolve=>{resolveResponse=resolve;});
+    return new Response('PKfake-test-body',{headers:{'Content-Type':'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet','Content-Disposition':'attachment; filename="keystone-trial-leads-2026-10-23.xlsx"'}});
+  };
+  const app=await mount(LeadsTable,{leads:[lead]});const before=navigation.length;
+  try{
+    const button=()=>[...app.el.querySelectorAll('button')].find(item=>/Export to Excel|Preparing Excel/.test(item.textContent));
+    await change(app.el.querySelector('input'),'not found');assert.ok(app.el.textContent.includes('No trial requests found'));
+    assert.ok(app.el.textContent.includes('Exports all saved leads'));
+    await click(button());assert.match(app.el.querySelector('[role=alert]').textContent,/Network interrupted/);assert.equal(button().disabled,false);
+    mode='auth';await click(button());assert.match(app.el.querySelector('[role=alert]').textContent,/sign in/);
+    mode='html';await click(button());assert.match(app.el.querySelector('[role=alert]').textContent,/did not return an Excel file/);assert.equal(downloads.length,0);
+    mode='pending';await act(async()=>{button().click();button().click();});assert.equal(calls.length,4);assert.equal(button().disabled,true);
+    await act(async()=>resolveResponse(new Response('PKfake-test-body',{headers:{'Content-Type':'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet','Content-Disposition':'attachment; filename="keystone-trial-leads-2026-10-23.xlsx"'}})));
+    assert.equal(downloads.length,1);assert.equal(downloads[0].filename,'keystone-trial-leads-2026-10-23.xlsx');assert.equal(urls[0].size,16);
+    assert.equal(app.el.querySelector('input').value,'not found');assert.equal(navigation.length,before);assert.equal(uploadToasts.at(-1).kind,'success');
+    assert.equal(calls.at(-1).options.credentials,'same-origin');assert.equal(calls.at(-1).options.cache,'no-store');
+    await change(app.el.querySelector('input'),'');await click([...app.el.querySelectorAll('button')].find(item=>item.textContent==='Manage'));assert.ok(app.el.querySelector('textarea'));
+    await click([...app.el.querySelectorAll('button')].find(item=>item.textContent==='Cancel'));
+    await mkdir('outputs/lead-export',{recursive:true});await writeFile('outputs/lead-export/table.html',app.el.outerHTML);
+    await act(async()=>new Promise(resolve=>setTimeout(resolve,1050)));assert.deepEqual(revoked,['blob:test-export']);
+  }finally{await app.unmount();URL.createObjectURL=originalCreate;URL.revokeObjectURL=originalRevoke;browser.HTMLAnchorElement.prototype.click=originalClick;}
+});
 await test('submission deletion confirms exact attempt, cancels without requests, rejects double submits, reports errors and removes only the selected row',async()=>{
   const record={id:'00000000-0000-4000-8000-000000007800',revision:2,student:{full_name:'Test Student',email:'test@example.invalid'},exam:{name:'SCS Mock 1'},status:'graded',score:75,submitted_at:'2026-10-20T00:00:00Z'};
   const submissions=[record,{...record,id:'second',student:{full_name:'Other Student'}}];

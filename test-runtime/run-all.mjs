@@ -1,6 +1,8 @@
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 const root=fileURLToPath(new URL('../',import.meta.url));
+const leadExport=spawnSync(process.execPath,['test-runtime/verify-lead-export.mjs'],{cwd:root,stdio:'inherit'});
+if(leadExport.status!==0)process.exit(leadExport.status??1);
 const trialBadges=spawnSync(process.execPath,['test-runtime/verify-trial-badges.mjs'],{cwd:root,stdio:'inherit'});
 if(trialBadges.status!==0)process.exit(trialBadges.status??1);
 const deletionApi=spawnSync(process.execPath,['test-runtime/verify-submission-deletion-api.mjs'],{cwd:root,stdio:'inherit'});

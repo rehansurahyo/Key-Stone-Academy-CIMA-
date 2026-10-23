@@ -5,8 +5,10 @@ import { useRouter } from "next/navigation";
 import { Search } from "lucide-react";
 import { inputClass, Notice, primaryClass, sendJson } from "./shared";
 import { countryName } from "@/lib/countries";
+import { ExportLeadsButton } from "./export-leads-button";
+import type { TrialLead } from "@/lib/trial-leads";
 
-export type TrialLead = { id: string; full_name: string; email: string; phone: string; country: string | null; phone_country: string | null; country_code: string | null; target_level: "OCS" | "MCS" | "SCS"; status: "new" | "contacted" | "converted" | "closed"; admin_notes: string; created_at: string };
+export type { TrialLead } from "@/lib/trial-leads";
 
 export function LeadsTable({ leads }: { leads: TrialLead[] }) {
   const [query, setQuery] = useState("");
@@ -15,7 +17,7 @@ export function LeadsTable({ leads }: { leads: TrialLead[] }) {
   const [error, setError] = useState("");
   const router = useRouter();
   const visible = useMemo(() => { const term = query.trim().toLowerCase(); return term ? leads.filter(lead => `${lead.full_name} ${lead.email} ${lead.phone} ${lead.phone_country || ""} ${countryName(lead.phone_country)} ${lead.country_code || ""} ${lead.target_level} ${lead.status}`.toLowerCase().includes(term)) : leads; }, [leads, query]);
-  return <><div className="mb-5 max-w-md"><label className="relative block"><Search className="pointer-events-none absolute left-3 top-3 size-4 text-slate-400" /><span className="sr-only">Search trial requests</span><input value={query} onChange={event => setQuery(event.target.value)} placeholder="Search name, email, phone, country or case study" className={`${inputClass} pl-9`} /></label></div>
+  return <><div className="mb-5 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between"><div className="w-full max-w-md"><label className="relative block"><Search className="pointer-events-none absolute left-3 top-3 size-4 text-slate-400" /><span className="sr-only">Search trial requests</span><input value={query} onChange={event => setQuery(event.target.value)} placeholder="Search name, email, phone, country or case study" className={`${inputClass} pl-9`} /></label></div><ExportLeadsButton /></div>
     <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
       <table className="w-full min-w-[900px] text-left text-sm">
         <thead className="border-b bg-slate-50 text-xs text-slate-500"><tr>
