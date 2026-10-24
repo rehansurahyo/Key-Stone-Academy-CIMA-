@@ -21,7 +21,6 @@ import {
   Maximize2,
   Redo2,
   RotateCcw,
-  Save,
   Scissors,
   Sigma,
   Strikethrough,
@@ -1844,30 +1843,24 @@ export default function ExamRuntime({
           {examName} - {studentAuth.candidateName}
         </div>
 
-        {/* Right: persistence status and question progress */}
+        {/* Right: explicit exit action and question progress */}
         <div className="flex items-center justify-end gap-3 shrink-0 text-right">
           <button type="button" onClick={() => void exitToDashboard()} disabled={exiting || submitting || transitioning} className="inline-flex items-center gap-1 rounded-sm border border-white/60 px-2 py-1 text-xs font-semibold hover:bg-white/15 disabled:opacity-50">
             <ArrowLeft className="size-3.5" />{exiting ? "Saving & exiting…" : "Exit to Dashboard"}
           </button>
-          <div
-            className="hidden min-w-[112px] items-center justify-end gap-1.5 text-[11px] font-semibold sm:flex"
-            aria-live="polite"
-          >
-            {saveState === "saving" && (
-              <><span className="size-2 animate-pulse rounded-full bg-amber-300" />Saving...</>
-            )}
-            {saveState === "saved" && (
-              <><Save className="size-3" />All changes saved</>
-            )}
-            {(saveState === "error" || timerSyncError) && (
-              <span className="text-amber-200">Save unavailable</span>
-            )}
-          </div>
           <span className="text-xs sm:text-sm font-bold text-white tracking-wide">
             Question {questionIndex + 1} of {sections.length}
           </span>
         </div>
       </header>
+
+      {/* Keep routine background saving quiet; failures remain visible on all screens. */}
+      {(saveState === "error" || timerSyncError) && (
+        <div role="alert" aria-label="Progress save warning" className="max-h-24 shrink-0 overflow-y-auto border-b border-amber-300 bg-amber-50 px-4 py-2 text-xs leading-relaxed text-amber-950">
+          {saveState === "error" && <p>Save failed: {saveError ?? "Unable to save response"}. Your latest changes have not synced yet. Please check your connection.</p>}
+          {timerSyncError && <p>Timer sync failed: {timerSyncError}</p>}
+        </div>
+      )}
 
       {/* Secondary Tool Ribbon */}
       {exitError && <p role="alert" className="shrink-0 border-b border-amber-300 bg-amber-50 px-4 py-2 text-sm text-amber-900">{exitError}</p>}
@@ -2003,34 +1996,6 @@ export default function ExamRuntime({
                     seconds > 0 && !submitting && !exiting && !examSession.completed
                   }
                 />
-              </div>
-              <div className="flex h-7 flex-shrink-0 items-center justify-between border-t border-[#adb8c4] bg-[#edf1f4] px-3 text-[11px] text-slate-500">
-                <span>Response workspace autosave</span>
-                <span
-                  className={`flex items-center gap-1 font-semibold ${
-                    saveState === "error"
-                      ? "text-red-700"
-                      : saveState === "saving"
-                        ? "text-amber-700"
-                        : "text-emerald-700"
-                  }`}
-                >
-                  {saveState === "error" ? (
-                    <span>
-                      Save failed: {saveError ?? "Unable to save response"}
-                    </span>
-                  ) : saveState === "saving" ? (
-                    <>
-                      <span className="size-2 animate-pulse rounded-full bg-amber-500" />
-                      Saving...
-                    </>
-                  ) : (
-                    <>
-                      <Save className="size-3" />
-                      {saveState === "saved" ? "All changes saved" : "Autosave ready"}
-                    </>
-                  )}
-                </span>
               </div>
             </div>
           </div>

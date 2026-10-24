@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import React,{act} from '../node_modules/react/index.js';
 import {Window} from 'happy-dom';
 import {loader} from './component-loader.mjs';
+import {mkdir,writeFile} from 'node:fs/promises';
 const browser=new Window({url:'http://localhost:3001',width:1440,height:900});
 const navigations=[];browser.location.assign=url=>navigations.push(url);
 globalThis.window=browser;
@@ -28,6 +29,10 @@ async function click(button){assert.ok(button,'Button exists');await act(async()
 const button=(scope,text)=>[...scope.querySelectorAll('button')].find(b=>b.textContent.trim()===text);
 const failures=[];
 async function test(name,run){try{await run();console.log('PASS:',name);}catch(error){failures.push(name);console.error('FAIL:',name,error.stack);}}
+function assertQuietAutosave(){
+  for(const text of ['Saving...','All changes saved','Autosave ready','Response workspace autosave'])assert.ok(!el.textContent.includes(text),`Routine status must be hidden: ${text}`);
+  assert.equal(el.querySelector('svg.lucide-save'),null);
+}
 await render();
 await test('restores prompt screen and profile name; response editor shows current task',async()=>{
   assert.ok(el.textContent.includes('Local Test Student'));assert.ok(el.textContent.includes('You receive the following email'));
@@ -43,6 +48,49 @@ await test('real Tiptap typing persists local recovery draft, toolbar formats te
   await click(el.querySelector('[aria-label="Bold"]'));
   await click([...el.querySelectorAll('footer button')].find(b=>b.textContent.includes('Previous')));assert.ok(el.textContent.includes('You receive the following email'));
   await click([...el.querySelectorAll('footer button')].find(b=>b.textContent.includes('Next')));assert.ok(el.querySelector('.tiptap').textContent.includes('Student verification answer'));
+});
+await test('routine autosave stays invisible while pending and saved, but real background writes and editable typing continue',async()=>{
+  assertQuietAutosave();
+  const before=writes.length;
+  await act(async()=>{const p=document.createElement('p');p.textContent='Quiet background autosave proof';el.querySelector('.tiptap').append(p);await new Promise(r=>setTimeout(r,40));});
+  assertQuietAutosave();assert.equal(el.querySelector('.tiptap').getAttribute('contenteditable'),'true');
+  await act(async()=>new Promise(r=>setTimeout(r,1950)));
+  assert.ok(writes.length>before);assert.ok(writes.at(-1).answerText.includes('Quiet background autosave proof'));
+  assertQuietAutosave();assert.equal(el.querySelector('[aria-label="Progress save warning"]'),null);
+  await mkdir('outputs/quiet-autosave',{recursive:true});await writeFile('outputs/quiet-autosave/healthy.html',el.outerHTML);
+});
+await test('failed autosave remains a visible warning without disabling typing; reconnect saves the draft and clears the warning',async()=>{
+  const previousFetch=globalThis.fetch;
+  try{
+    globalThis.fetch=async()=>{throw new TypeError('Connection interrupted');};
+    await act(async()=>{const p=document.createElement('p');p.textContent='Recovery proof after failed save';el.querySelector('.tiptap').append(p);await new Promise(r=>setTimeout(r,40));});
+    await act(async()=>new Promise(r=>setTimeout(r,1950)));
+    const warning=el.querySelector('[aria-label="Progress save warning"]');assert.ok(warning);assert.equal(warning.getAttribute('role'),'alert');
+    assert.ok(warning.textContent.includes('Save failed: Connection interrupted'));assert.ok(warning.textContent.includes('have not synced yet'));
+    assert.equal(el.querySelector('.tiptap').getAttribute('contenteditable'),'true');assertQuietAutosave();
+    assert.ok(JSON.parse(browser.localStorage.getItem(`keystone-cima-answer-drafts-v1:${auth.user.id}-${LEGACY_EXAM_ID}`))['section-1'].includes('Recovery proof'));
+    await writeFile('outputs/quiet-autosave/error.html',el.outerHTML);
+    globalThis.fetch=previousFetch;
+    await act(async()=>{window.dispatchEvent(new Event('online'));await new Promise(r=>setTimeout(r,30));});
+    assert.ok(writes.at(-1).answerText.includes('Recovery proof'));assert.equal(el.querySelector('[aria-label="Progress save warning"]'),null);assertQuietAutosave();
+  }finally{globalThis.fetch=previousFetch;}
+});
+await test('timer sync errors stay visible even on the prompt screen, then clear after recovery',async()=>{
+  const previousRpc=client.rpc;
+  try{
+    await click([...el.querySelectorAll('footer button')].find(b=>b.textContent.includes('Previous')));
+    client.rpc=async()=>({error:new Error('Timer unavailable')});
+    await act(async()=>{window.dispatchEvent(new Event('online'));await new Promise(r=>setTimeout(r,30));});
+    assert.ok(el.querySelector('[aria-label="Progress save warning"]').textContent.includes('Timer sync failed: Timer unavailable'));
+    assertQuietAutosave();
+    client.rpc=previousRpc;
+    await act(async()=>{window.dispatchEvent(new Event('online'));await new Promise(r=>setTimeout(r,30));});
+    assert.equal(el.querySelector('[aria-label="Progress save warning"]'),null);
+  }finally{
+    client.rpc=previousRpc;
+    await act(async()=>{window.dispatchEvent(new Event('online'));await new Promise(r=>setTimeout(r,30));});
+    if(!el.querySelector('.tiptap'))await click([...el.querySelectorAll('footer button')].find(b=>b.textContent.includes('Next')));
+  }
 });
 await test('Tiptap table grid inserts a 2-by-2 table and includes it in the recovery draft',async()=>{
   await click(button(el,'Table'));await click(el.querySelector('[aria-label="2 columns by 2 rows"]'));
