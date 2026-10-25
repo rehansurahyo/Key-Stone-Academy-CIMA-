@@ -598,6 +598,9 @@ function ResponseEditor({
     editable,
     editorProps: {
       attributes: {
+        spellcheck: "false",
+        autocorrect: "off",
+        autocapitalize: "off",
         class:
           "exam-editor min-h-full px-4 sm:px-6 py-3 sm:py-4 outline-none text-xs sm:text-[14px] leading-relaxed text-slate-900",
       },
