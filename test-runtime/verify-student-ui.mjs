@@ -13,9 +13,11 @@ Object.defineProperty(globalThis,'navigator',{value:browser.navigator,configurab
 const {createRoot}=await import('../node_modules/react-dom/client.js');
 const auth={user:{id:'local-test-student'},role:'student',candidateName:'Local Test Student',loading:false,error:null,configured:true};
 let completions=0;
+const sessionActivations=[];
 const client={auth:{refreshSession:async()=>({error:null})},rpc:async()=>({error:null}),from:()=>({select(){return this;},eq(){return this;},single:async()=>({data:{status:'in_progress',question_timers:{},active_question_id:null},error:null})})};
 const writes=[];globalThis.fetch=async(_url,options)=>{writes.push(JSON.parse(options.body));return new Response('{"saved":true}');};
-const load=loader({'@/hooks/useStudentAuth':{useStudentAuth:()=>auth},'@/hooks/useStudentExamSession':{useStudentExamSession:()=>{
+const load=loader({'@/hooks/useStudentAuth':{useStudentAuth:()=>auth},'@/hooks/useStudentExamSession':{useStudentExamSession:(active,examId)=>{
+  React.useEffect(()=>{if(active)sessionActivations.push(examId);},[active,examId]);
   const [completed,setCompleted]=React.useState(false);
   return{sessionId:'local-test-session',answers:{},questionTimers:{},completed,loading:false,error:null,completeSession:async()=>{completions++;setCompleted(true);return true;},resetLocalSession:()=>setCompleted(false)};
 }},'@/lib/supabase/client':{createClient:()=>client,isSupabaseConfigured:true}});
@@ -191,6 +193,25 @@ await test('OCS and MCS pre-seen viewers use their current exam level',async()=>
   root=createRoot(el);await act(async()=>{root.render(React.createElement(ExamRuntime,{examId:mcsExamId,examName:'Management Case Study — Mock 1',examLevel:'MCS',initialQuestions:[question]}));await new Promise(r=>setTimeout(r,20));});
   await click(button(el,'Pre-seen'));
   assert.ok(el.textContent.includes('Management Case Study Examination'),'Pre-seen viewer uses the MCS title');
+});
+await test('a new trial confirms Go ahead or Go back before activating the exam; an existing trial resumes without confirmation',async()=>{
+  await act(async()=>root.unmount());
+  const trialExam='00000000-0000-4000-8000-000000000016';
+  browser.localStorage.setItem(`keystone-cima-exam-ui-v1-${trialExam}-${auth.user.id}`,JSON.stringify({flow:'structure',questionIndex:0,screen:'prompt'}));
+  root=createRoot(el);
+  await act(async()=>{root.render(React.createElement(ExamRuntime,{examId:trialExam,isTrial:true,initialQuestions:[questionsData[0]]}));await new Promise(r=>setTimeout(r,20));});
+  const before=sessionActivations.length;
+  await click(el.querySelector('#structure-next-button'));
+  let dialog=document.querySelector('[role=alertdialog]');assert.ok(dialog.textContent.includes('one free-trial attempt'));
+  await mkdir('outputs/trial-start',{recursive:true});await writeFile('outputs/trial-start/dialog.html',document.body.innerHTML);
+  assert.equal(sessionActivations.length,before);assert.equal(el.querySelector('.tiptap'),null);
+  await click(button(dialog,'Go back'));assert.equal(document.querySelector('[role=alertdialog]'),null);assert.equal(sessionActivations.length,before);
+  await click(el.querySelector('#structure-next-button'));dialog=document.querySelector('[role=alertdialog]');
+  await click(button(dialog,'Go ahead'));assert.equal(sessionActivations.at(-1),trialExam);assert.ok(el.textContent.includes('TIME REMAINING'));
+  await act(async()=>root.unmount());
+  browser.localStorage.setItem(`keystone-cima-exam-ui-v1-${trialExam}-${auth.user.id}`,JSON.stringify({flow:'structure',questionIndex:0,screen:'prompt'}));
+  root=createRoot(el);await act(async()=>{root.render(React.createElement(ExamRuntime,{examId:trialExam,isTrial:true,trialAttemptStarted:true,initialQuestions:[questionsData[0]]}));await new Promise(r=>setTimeout(r,20));});
+  await click(el.querySelector('#structure-next-button'));assert.equal(document.querySelector('[role=alertdialog]'),null);assert.ok(el.textContent.includes('TIME REMAINING'));
 });
 await test('student login ignores an exam return URL and always lands on the shared dashboard',async()=>{
   await act(async()=>root.unmount());

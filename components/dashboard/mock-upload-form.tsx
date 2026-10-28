@@ -10,6 +10,7 @@ import { inputClass, primaryClass, secondaryClass, Notice, sendJson } from "./sh
 import type { ExamMaterial, ExamQuestion, MockExam } from "@/lib/dashboard/types";
 import { getSubtasks } from "@/lib/exam-subtasks";
 import { EXAM_LEVELS, LEVEL_NAMES } from "@/lib/exam-levels";
+import { REFERENCE_MATERIAL_ACCEPT, validateExamMaterial } from "@/lib/exam-material-files";
 
 type QuestionDraft = {
   key: string; from: string; to: string; subject: string; intro: string; taskPrompt: string;
@@ -52,10 +53,7 @@ export function MockUploadForm({ initialExam }: { initialExam?: MockEditState })
         ...(solutionGuide ? [{ file: solutionGuide, kind: "solution" as const, question_id: null }] : []),
         ...questions.flatMap((q, i) => q.file ? [{ file: q.file, kind: "reference" as const, question_id: `section-${i + 1}` }] : []),
       ];
-      for (const { file } of files) {
-        if (file.size > 20 * 1024 * 1024 || file.size === 0) throw new Error(`${file.name}: PDFs must be between 1 byte and 20 MB.`);
-        if (!(await file.slice(0, 5).text()).startsWith("%PDF-")) throw new Error(`${file.name} is not a valid PDF document.`);
-      }
+      const formats = await Promise.all(files.map(({ file, kind }) => validateExamMaterial(file, kind)));
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Your session expired. Please sign in again.");
       const folder = `${user.id}/${crypto.randomUUID()}`;
@@ -65,9 +63,9 @@ export function MockUploadForm({ initialExam }: { initialExam?: MockEditState })
         ...questions.flatMap((q, index) => !q.file ? q.retained.map(m => ({ name: m.name, storage_path: m.storage_path, kind: m.kind, question_id: `section-${index + 1}` })) : []),
       ];
       for (const [index, item] of files.entries()) {
-        setProgress(`Uploading PDF ${index + 1} of ${files.length}…`);
-        const path = `${folder}/${index}-${item.kind}.pdf`;
-        const { error: storageError } = await supabase.storage.from("exam-materials").upload(path, item.file, { contentType: "application/pdf", upsert: false });
+        setProgress(`Uploading file ${index + 1} of ${files.length}…`);
+        const path = `${folder}/${index}-${item.kind}.${formats[index].extension}`;
+        const { error: storageError } = await supabase.storage.from("exam-materials").upload(path, item.file, { contentType: formats[index].contentType, upsert: false });
         if (storageError) throw new Error(storageError.message);
         uploaded.push(path);
         materials.push({ name: item.file.name, storage_path: path, kind: item.kind, question_id: item.question_id });
@@ -108,8 +106,8 @@ export function MockUploadForm({ initialExam }: { initialExam?: MockEditState })
           </div>)}
           <div className="flex flex-wrap items-center justify-between gap-3"><button type="button" aria-label={`Add subtask to question ${index + 1}`} disabled={q.subtasks.length >= 100} onClick={() => update(q.key, { subtasks: [...q.subtasks, { key: crypto.randomUUID(), description: "", weightage: 0 }] })} className={secondaryClass}><Plus className="size-4" />Add subtask</button><p role="status" className="text-xs font-medium text-slate-600">Total weightage: {Number(q.subtasks.reduce((sum, t) => sum + t.weightage, 0).toFixed(2))}{q.weightageUnit === "percent" ? "% (required: 100%)" : " marks"}</p></div>
         </div>
-        {q.retained.length > 0 && <div className="space-y-2 md:col-span-2"><p className="text-xs text-slate-500">Existing reference PDFs {q.file && "(replaced by your new upload)"}</p>{q.retained.map(m => <div key={m.id} className="flex items-center justify-between gap-3"><a className="text-sm text-blue-700 hover:underline" href={`/api/dashboard/materials/${m.id}`} target="_blank" rel="noreferrer">{m.name}</a><button type="button" aria-label={`Remove retained PDF ${m.name}`} className="text-xs text-red-700" onClick={() => update(q.key, { retained: q.retained.filter(item => item.id !== m.id) })}>Remove from draft</button></div>)}</div>}
-        <label className="text-sm font-medium text-slate-700">Question reference PDF (optional)<input type="file" accept="application/pdf,.pdf" className={`${inputClass} mt-2`} onChange={e => update(q.key, { file: e.target.files?.[0] ?? null })} /></label>
+        {q.retained.length > 0 && <div className="space-y-2 md:col-span-2"><p className="text-xs text-slate-500">Existing reference files {q.file && "(replaced by your new upload)"}</p>{q.retained.map(m => <div key={m.id} className="flex items-center justify-between gap-3"><a className="text-sm text-blue-700 hover:underline" href={`/api/dashboard/materials/${m.id}`} target="_blank" rel="noreferrer">{m.name}</a><button type="button" aria-label={`Remove retained PDF ${m.name}`} className="text-xs text-red-700" onClick={() => update(q.key, { retained: q.retained.filter(item => item.id !== m.id) })}>Remove from draft</button></div>)}</div>}
+        <label className="text-sm font-medium text-slate-700">Question reference material (optional)<input aria-label={`Question ${index + 1} reference material`} type="file" accept={REFERENCE_MATERIAL_ACCEPT} className={`${inputClass} mt-2`} onChange={e => update(q.key, { file: e.target.files?.[0] ?? null })} /><span className="mt-2 block text-xs text-slate-500">PDF, PNG or JPG · maximum 20 MB</span></label>
       </div></section>)}
       <div className="flex flex-wrap items-center justify-between gap-4"><button type="button" disabled={questions.length >= 12} onClick={() => setQuestions(current => [...current, makeQuestion()])} className={secondaryClass}><Plus className="size-4" />Add question</button><button className={primaryClass}><Upload className="size-4" />{initialExam ? "Save draft changes" : "Save mock exam"}</button></div>
     </fieldset>

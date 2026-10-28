@@ -18,6 +18,7 @@ let client={};
 const uploadToasts=[];
 const load=loader({'sonner':{toast:Object.fromEntries(['success','error','warning'].map(kind=>[kind,(...args)=>uploadToasts.push({kind,args})]))},'next/navigation':{useRouter:()=>router,usePathname:()=>'/dashboard'},'next/link':{__esModule:true,default:({href,children,...props})=>React.createElement('a',{href,...props},children)},'next/image':{__esModule:true,default:({priority,...props})=>React.createElement('img',props)},'./dashboard-theme.module.css':{__esModule:true,default:{shell:'dashboard-shell-test',sidebar:'dashboard-sidebar-test',scrollArea:'dashboard-scroll-test'}},'@/lib/supabase/client':{isSupabaseConfigured:true,createClient:()=>client}});
 const {MockUploadForm}=load('components/dashboard/mock-upload-form.tsx');
+const {ReferenceMaterialContent}=load('components/reference-material-content.tsx');
 const {MockExamsTable}=load('components/dashboard/mock-exams-table.tsx');
 const {MockExamLibrary}=load('components/dashboard/mock-exam-library.tsx');
 const {ExamTaskList}=load('components/exam-task-list.tsx');
@@ -289,6 +290,37 @@ await test('edit form prefills tasks, preserves PDF without reupload, remaps rem
     assert.deepEqual(calls[0].body.materials,[{name:'Original reference.pdf',storage_path:'original-tutor/source/reference.pdf',kind:'reference',question_id:'section-1'}]);assert.deepEqual(calls[0].body.questions[0].subtasks.map(t=>t.weightage),[10,40,50]);assert.ok(navigation.includes('/dashboard/exams?saved=copy'));
     await click(app.el.querySelector('[aria-label="Remove retained PDF Original reference.pdf"]'));await submit(app.el.querySelector('form'));assert.deepEqual(calls.at(-1).body.materials,[]);
   }finally{await app.unmount();}
+});
+await test('reference PNG/JPG uploads retain real file types and question links; image previews and errors work; image pre-seen is rejected',async()=>{
+  const png=Uint8Array.from(Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a3S8AAAAASUVORK5CYII=','base64'));
+  const uploads=[],calls=[];
+  client={auth:{getUser:async()=>({data:{user:{id:'image-tutor'}}})},storage:{from:()=>({upload:async(path,file,options)=>{uploads.push({path,file,options});return{error:null};},remove:async()=>({error:null})})}};
+  globalThis.fetch=async(url,options)=>{calls.push(JSON.parse(options.body));return Response.json({id:'image-mock'});};
+  for(const [name,bytes,type] of [['chart.PNG',png,'image/png'],['reference.jpeg',new Uint8Array([255,216,255,224,0,16,74,70,73,70,0]),'image/jpeg']]){
+    const app=await mount(MockUploadForm);
+    try{
+      await fillMock(app.el);
+      const input=app.el.querySelector('[aria-label="Question 1 reference material"]');assert.ok(input.accept.includes('.png'));assert.ok(input.accept.includes('.jpg'));
+      await act(async()=>{Object.defineProperty(input,'files',{value:[new File([bytes],name,{type})],configurable:true});input.dispatchEvent(new Event('change',{bubbles:true}));});
+      await submit(app.el.querySelector('form'));
+      assert.equal(uploads.at(-1).options.contentType,type);assert.ok(uploads.at(-1).path.endsWith(type==='image/png'?'.png':'.jpg'));
+      assert.equal(calls.at(-1).materials[0].kind,'reference');assert.equal(calls.at(-1).materials[0].question_id,'section-1');
+    }finally{await app.unmount();}
+  }
+  const bad=await mount(MockUploadForm);
+  try{
+    await fillMock(bad.el);const input=bad.el.querySelector('[aria-label="Pre-seen PDF"]');
+    await act(async()=>{Object.defineProperty(input,'files',{value:[new File([png],'chart.png',{type:'image/png'})],configurable:true});input.dispatchEvent(new Event('change',{bubbles:true}));});
+    const before=uploads.length;await submit(bad.el.querySelector('form'));assert.equal(uploads.length,before);assert.match(bad.el.querySelector('[role=alert]').textContent,/not a valid PDF/);
+  }finally{await bad.unmount();}
+  const material={id:'image',name:'Budget chart',kind:'reference',storage_path:'tutor/chart.png'};
+  const image=await mount(ReferenceMaterialContent,{material,url:'https://private.example.test/signed-chart'});
+  try{
+    assert.equal(image.el.querySelector('img').alt,'Budget chart');assert.equal(image.el.querySelector('iframe'),null);assert.ok(image.el.querySelector('a').href.includes('signed-chart'));
+    await act(async()=>image.el.querySelector('img').dispatchEvent(new Event('error')));assert.match(image.el.querySelector('[role=alert]').textContent,/Unable to display/);
+  }finally{await image.unmount();}
+  const pdf=await mount(ReferenceMaterialContent,{material:{...material,storage_path:'tutor/chart.pdf'},url:'https://private.example.test/signed-pdf'});
+  try{assert.ok(pdf.el.querySelector('iframe').src.endsWith('#view=FitH'));assert.equal(pdf.el.querySelector('img'),null);}finally{await pdf.unmount();}
 });
 await test('PDF uploads preserve material mappings; invalid PDF rejects; failed exam creation cleans uploaded files',async()=>{
   const uploads=[],removed=[],calls=[];

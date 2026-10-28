@@ -61,6 +61,8 @@ import { ExamTaskList } from "@/components/exam-task-list";
 import { formatWeightage, getSubtasks, subtaskLabel } from "@/lib/exam-subtasks";
 import type { ExamMaterial } from "@/lib/dashboard/types";
 import { useExamMaterialUrl } from "@/hooks/useExamMaterialUrl";
+import { ReferenceMaterialContent } from "@/components/reference-material-content";
+import { TrialStartConfirmation } from "@/components/trial-start-confirmation";
 
 type WebModelContext = {
   registerTool: (
@@ -819,8 +821,8 @@ function ReferenceMaterials({
 
         {materials.length > 0 && <div className="flex shrink-0 gap-2 overflow-x-auto border-b bg-slate-50 p-2">{materials.map(m => <button key={m.id} className={`whitespace-nowrap border px-3 py-1 text-xs ${m.id === material?.id ? "bg-[#133E68] text-white" : "bg-white text-slate-700"}`} onClick={() => setSelectedMaterial(m.id)}>{m.name}</button>)}</div>}
         {material ? (
-          url ? <iframe title={material.name} src={`${url}#view=FitH`} className="min-h-0 w-full flex-1 border-0" />
-          : <p role={error ? "alert" : "status"} className="p-5 text-sm">{error || "Loading reference PDF…"}</p>
+          url ? <ReferenceMaterialContent key={material.id} material={material} url={url} />
+          : <p role={error ? "alert" : "status"} className="p-5 text-sm">{error || "Loading reference material…"}</p>
         ) : (
         <div className="min-h-0 flex-1 overflow-y-auto select-text cursor-text p-4 sm:p-7">
           <div className="border border-slate-300 rounded-sm p-5 sm:p-8 bg-white min-h-full shadow-sm">
@@ -1437,12 +1439,16 @@ export default function ExamRuntime({
   examName = "Strategic Case Study Exam",
   examLevel,
   materials = [],
+  isTrial = false,
+  trialAttemptStarted = false,
 }: {
   initialQuestions?: Question[];
   examId?: string;
   examName?: string;
   examLevel?: ExamLevel;
   materials?: ExamMaterial[];
+  isTrial?: boolean;
+  trialAttemptStarted?: boolean;
 }) {
   // Configurable sections (supports 3 or 4 sections dynamically)
   const [sections] = useState<Question[]>(initialQuestions);
@@ -1468,6 +1474,7 @@ export default function ExamRuntime({
   const [step2Warning, setStep2Warning] = useState(false);
   const [transitioning, setTransitioning] = useState(false);
   const [endExam, setEndExam] = useState(false);
+  const [confirmTrialStart, setConfirmTrialStart] = useState(false);
 
   const question = sections[questionIndex] || sections[0];
   const questionId = `section-${question.section}`;
@@ -1478,6 +1485,7 @@ export default function ExamRuntime({
     flow === "exam" && Boolean(studentAuth.user),
     examId,
     sections[0].timeMinutes * 60,
+    isTrial,
   );
 
   useEffect(() => {
@@ -1652,6 +1660,7 @@ export default function ExamRuntime({
       flow === "exam" &&
       !examSession.loading &&
       !examSession.completed &&
+      (!isTrial || Boolean(examSession.sessionId)) &&
       !submitting &&
       !transitioning,
     onTimeUp: handleQuestionTimeUp,
@@ -1800,9 +1809,14 @@ export default function ExamRuntime({
 
   if (flow === "structure") {
     return (
+      <>
       <ExamStructureScreen
         onPrevious={() => setFlow("welcome")}
         onNext={() => {
+          if (isTrial && !trialAttemptStarted) {
+            setConfirmTrialStart(true);
+            return;
+          }
           setFlow("exam");
           setQuestionIndex(0);
           setScreen("prompt");
@@ -1811,10 +1825,17 @@ export default function ExamRuntime({
         examName={examName}
         candidateName={studentAuth.candidateName}
       />
+      <TrialStartConfirmation open={confirmTrialStart} onOpenChange={setConfirmTrialStart} onConfirm={() => {
+        setConfirmTrialStart(false);
+        setQuestionIndex(0);
+        setScreen("prompt");
+        setFlow("exam");
+      }} />
+      </>
     );
   }
 
-  if (flow === "thankyou") {
+  if (flow === "thankyou" || examSession.completed) {
     return (
       <ThankYouScreen
         examName={examName}
@@ -1996,7 +2017,7 @@ export default function ExamRuntime({
                     })
                   }
                   editable={
-                    seconds > 0 && !submitting && !exiting && !examSession.completed
+                    seconds > 0 && !submitting && !exiting && !examSession.completed && (!isTrial || Boolean(examSession.sessionId))
                   }
                 />
               </div>

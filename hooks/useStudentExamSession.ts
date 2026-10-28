@@ -49,7 +49,7 @@ function parseQuestionTimers(value: unknown): SessionState["questionTimers"] {
   );
 }
 
-export function useStudentExamSession(active: boolean, examId = LEGACY_EXAM_ID, initialQuestionDuration = DEFAULT_QUESTION_DURATION_SECONDS) {
+export function useStudentExamSession(active: boolean, examId = LEGACY_EXAM_ID, initialQuestionDuration = DEFAULT_QUESTION_DURATION_SECONDS, isTrial = false) {
   const [state, setState] = useState<SessionState>({
     sessionId: null,
     timeRemainingSeconds: initialQuestionDuration,
@@ -128,6 +128,18 @@ export function useStudentExamSession(active: boolean, examId = LEGACY_EXAM_ID, 
     }
 
     let session = existing;
+    // A completed free trial is history, never permission to create a retake.
+    if (!session && isTrial) {
+      const { data, error } = await supabase.from("exam_sessions")
+        .select("id, status, duration_seconds, time_remaining_seconds, question_timers, updated_at")
+        .eq("user_id", user.id).eq("exam_id", examId).eq("status", "completed")
+        .order("updated_at", { ascending: false }).limit(1).maybeSingle();
+      if (error) {
+        setState(current => ({ ...current, loading: false, error: error.message }));
+        return;
+      }
+      session = data;
+    }
     if (!session) {
       const { data, error } = await supabase
         .from("exam_sessions")
@@ -144,14 +156,22 @@ export function useStudentExamSession(active: boolean, examId = LEGACY_EXAM_ID, 
         .select("id, status, duration_seconds, time_remaining_seconds, question_timers, updated_at")
         .single();
       if (error) {
-        setState((current) => ({
-          ...current,
-          loading: false,
-          error: error.message,
-        }));
-        return;
+        // Two tabs can both see no attempt. The database lets only one insert;
+        // the other tab resumes that row rather than starting a second timer.
+        if (isTrial && error.code === "23505") {
+          const retry = await supabase.from("exam_sessions")
+            .select("id, status, duration_seconds, time_remaining_seconds, question_timers, updated_at")
+            .eq("user_id", user.id).eq("exam_id", examId)
+            .order("updated_at", { ascending: false }).limit(1).maybeSingle();
+          session = retry.error ? null : retry.data;
+        }
+        if (!session) {
+          setState(current => ({ ...current, loading: false, error: error.message }));
+          return;
+        }
+      } else {
+        session = data;
       }
-      session = data;
     } else if (session.status === "not_started") {
       const { data, error } = await supabase
         .from("exam_sessions")
@@ -200,14 +220,16 @@ export function useStudentExamSession(active: boolean, examId = LEGACY_EXAM_ID, 
       ),
       loading: false,
       error: null,
-      completed: false,
+      completed: session.status === "completed",
     });
-  }, [examId, initialQuestionDuration]);
+  }, [examId, initialQuestionDuration, isTrial]);
 
   useEffect(() => {
     if (!active || initializedRef.current) return;
     initializedRef.current = true;
-    void initialize();
+    void initialize().catch(error => {
+      setState(current => ({ ...current, loading: false, error: error instanceof Error ? error.message : "Unable to restore your attempt. Please reconnect and try again." }));
+    });
   }, [active, initialize]);
 
   const completeSession = useCallback(

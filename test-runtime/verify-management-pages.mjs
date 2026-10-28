@@ -2,13 +2,13 @@ import assert from 'node:assert/strict';
 import React from '../node_modules/react/index.js';
 import {renderToStaticMarkup} from '../node_modules/react-dom/server.node.js';
 import {loader} from './component-loader.mjs';
-let status='published',ownAttempt=true,visible=true,countsError=null,formProps,runtimeProps,assignedLevel='SCS',accountRole='student',accessType='enrolled',trialExamId=null;
+let status='published',ownAttempt=true,attemptStatus='in_progress',visible=true,countsError=null,formProps,runtimeProps,assignedLevel='SCS',accountRole='student',accessType='enrolled',trialExamId=null;
 const examId='00000000-0000-4000-8000-000000000050';
 const paper=()=>({id:examId,name:'Historical mock',description:'Preserved exam',level:'SCS',status,revision:3});
 const question={id:'q1',question_id:'section-1',position:1,duration_seconds:3600,content:{subject:'Original subject',subtasks:[{description:'Original task',weightage:100}]}};
 const client={auth:{getUser:async()=>({data:{user:{id:'own-student'}}})},rpc:async()=>({data:[{exam_id:examId,attempt_count:1}],error:countsError}),from(table){
   return {select(){return this;},eq(){return this;},in(){return this;},limit(){return this;},order(){return this;},single:async()=>({data:{id:'own-student',role:accountRole,is_active:true,full_name:'Student',assigned_level:assignedLevel,access_type:accessType,trial_exam_id:trialExamId},error:null}),maybeSingle:async()=>({data:table==='exams'?(visible?paper():null):ownAttempt?{id:'existing-session'}:null,error:null}),then(resolve){
-    const data=table==='exam_questions'?[question]:table==='exam_materials'?[]:table==='exams'?status==='published'?[paper()]:[]:table==='exam_sessions'?ownAttempt?[{id:'existing-session',exam_id:examId,status:'in_progress',exam:paper()}]:[]:table==='submissions'?[{id:'submission',exam_id:examId,status:'graded',score:82,feedback:'Preserved tutor feedback',exam:paper()}]:[];
+    const data=table==='exam_questions'?[question]:table==='exam_materials'?[]:table==='exams'?status==='published'?[paper()]:[]:table==='exam_sessions'?ownAttempt?[{id:'existing-session',exam_id:examId,status:attemptStatus,exam:paper()}]:[]:table==='submissions'?[{id:'submission',exam_id:examId,status:'graded',score:82,feedback:'Preserved tutor feedback',exam:paper()}]:[];
     return Promise.resolve({data,error:null}).then(resolve);
   }};
 }};
@@ -36,6 +36,12 @@ accessType='trial';trialExamId='another-paper';runtimeProps=null;
 await assert.rejects(ExamPage({params}),/REDIRECT:\/dashboard\?notice=trial-locked/);
 assert.equal(runtimeProps,null,'Locked trial paper never reaches the exam runtime');
 trialExamId=examId;assert.ok(renderToStaticMarkup(await ExamPage({params})).includes('Existing exam runtime'));
+assert.equal(runtimeProps.isTrial,true);assert.equal(runtimeProps.trialAttemptStarted,false);
+ownAttempt=true;renderToStaticMarkup(await ExamPage({params}));assert.equal(runtimeProps.trialAttemptStarted,true);
+attemptStatus='completed';runtimeProps=null;
+assert.ok(renderToStaticMarkup(await ExamPage({params})).includes('Only one attempt is available'));assert.equal(runtimeProps,null);
+attemptStatus='in_progress';
+console.log('PASS: trial pages pass canonical access, distinguish a first start from resume, and block completed retakes at the direct exam URL');
 accessType='enrolled';trialExamId=null;
 const denied=renderToStaticMarkup(await StudentDashboard({searchParams:Promise.resolve({notice:'exam-level'})}));
 assert.ok(denied.includes('This mock is unavailable for your assigned level (SCS)'));

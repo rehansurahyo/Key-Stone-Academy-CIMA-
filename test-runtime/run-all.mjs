@@ -1,6 +1,12 @@
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 const root=fileURLToPath(new URL('../',import.meta.url));
+const referenceFiles=spawnSync(process.execPath,['test-runtime/verify-reference-files.mjs'],{cwd:root,stdio:'inherit'});
+if(referenceFiles.status!==0)process.exit(referenceFiles.status??1);
+const trialSession=spawnSync(process.execPath,['test-runtime/verify-trial-session.mjs'],{cwd:root,stdio:'inherit'});
+if(trialSession.status!==0)process.exit(trialSession.status??1);
+const trialAttemptLimit=spawnSync(process.execPath,['test-runtime/verify-trial-attempt-limit.mjs'],{cwd:root,stdio:'inherit'});
+if(trialAttemptLimit.status!==0)process.exit(trialAttemptLimit.status??1);
 const leadExport=spawnSync(process.execPath,['test-runtime/verify-lead-export.mjs'],{cwd:root,stdio:'inherit'});
 if(leadExport.status!==0)process.exit(leadExport.status??1);
 const trialBadges=spawnSync(process.execPath,['test-runtime/verify-trial-badges.mjs'],{cwd:root,stdio:'inherit'});
