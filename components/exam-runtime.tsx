@@ -62,6 +62,7 @@ import { formatWeightage, getSubtasks, subtaskLabel } from "@/lib/exam-subtasks"
 import type { ExamMaterial } from "@/lib/dashboard/types";
 import { useExamMaterialUrl } from "@/hooks/useExamMaterialUrl";
 import { ReferenceMaterialContent } from "@/components/reference-material-content";
+import { ResizableMaterialWindow } from "@/components/resizable-material-window";
 import { TrialStartConfirmation } from "@/components/trial-start-confirmation";
 
 type WebModelContext = {
@@ -801,24 +802,8 @@ function ReferenceMaterials({
   if (!open) return null;
 
   return (
-    <FloatingWindow title="Reference Material" onClose={() => onOpenChange(false)} initial={{ x: 24, y: 120 }} width={600}>
-      <div className="h-[65vh] min-h-0 overflow-hidden border border-[#0B2545] flex flex-col bg-white">
-        <div className="flex h-10 flex-shrink-0 items-center justify-between bg-[#0B2545] px-3 sm:px-4 text-white">
-          <div className="flex items-center gap-2">
-            <FileText className="size-4 shrink-0 text-white" />
-            <span className="text-xs sm:text-[14px] font-bold">
-              Reference Material
-            </span>
-          </div>
-          <button
-            aria-label="Close reference material"
-            onClick={() => onOpenChange(false)}
-            className="grid size-6 place-items-center rounded hover:bg-white/20 text-white transition-colors"
-          >
-            <X className="size-4" />
-          </button>
-        </div>
-
+    <ResizableMaterialWindow title="Reference Material" onClose={() => onOpenChange(false)}>
+      <div className="min-h-0 flex-1 overflow-hidden flex flex-col bg-white">
         {materials.length > 0 && <div className="flex shrink-0 gap-2 overflow-x-auto border-b bg-slate-50 p-2">{materials.map(m => <button key={m.id} className={`whitespace-nowrap border px-3 py-1 text-xs ${m.id === material?.id ? "bg-[#133E68] text-white" : "bg-white text-slate-700"}`} onClick={() => setSelectedMaterial(m.id)}>{m.name}</button>)}</div>}
         {material ? (
           url ? <ReferenceMaterialContent key={material.id} material={material} url={url} />
@@ -840,16 +825,8 @@ function ReferenceMaterials({
         </div>
         )}
 
-        <div className="h-10 flex-shrink-0 flex items-center justify-end border-t border-[#0B2545] bg-[#0B2545] px-3">
-          <button
-            onClick={() => onOpenChange(false)}
-            className="inline-flex items-center gap-1 border border-white bg-transparent px-3 py-1 text-xs font-bold text-white hover:bg-white/20 transition-colors"
-          >
-            <X className="size-3.5" /> Close
-          </button>
-        </div>
       </div>
-    </FloatingWindow>
+    </ResizableMaterialWindow>
   );
 }
 

@@ -320,7 +320,7 @@ await test('reference PNG/JPG uploads retain real file types and question links;
     await act(async()=>image.el.querySelector('img').dispatchEvent(new Event('error')));assert.match(image.el.querySelector('[role=alert]').textContent,/Unable to display/);
   }finally{await image.unmount();}
   const pdf=await mount(ReferenceMaterialContent,{material:{...material,storage_path:'tutor/chart.pdf'},url:'https://private.example.test/signed-pdf'});
-  try{assert.ok(pdf.el.querySelector('iframe').src.endsWith('#view=FitH'));assert.equal(pdf.el.querySelector('img'),null);}finally{await pdf.unmount();}
+  try{assert.ok(pdf.el.querySelector('iframe').src.endsWith('#toolbar=0&navpanes=0&view=FitH'));assert.equal(pdf.el.querySelector('img'),null);}finally{await pdf.unmount();}
 });
 await test('PDF uploads preserve material mappings; invalid PDF rejects; failed exam creation cleans uploaded files',async()=>{
   const uploads=[],removed=[],calls=[];
