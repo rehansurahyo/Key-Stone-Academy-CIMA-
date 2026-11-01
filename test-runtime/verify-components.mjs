@@ -179,7 +179,7 @@ await test('student review uses three clear sections and switches already-loaded
   const submissions=[{id:'submission-ocs',exam_id:'ocs-paper',status:'graded',score:81,feedback:'Strong structure.',exam:{id:'ocs-paper',name:'Operational Mock 2',description:'',level:'OCS',status:'published'}}];
   const app=await mount(StudentMockDashboard,{papers,submissions,reports:[{id:'report-1',submission_id:'submission-ocs',file_name:'tutor-report.pdf'}],solutions:[{id:'guide-1',exam_id:'ocs-paper',name:'model-solution.pdf',kind:'solution'}],assignedLevel:'OCS'});try{
     assert.ok(app.el.textContent.includes('1. Submitted Answers'));assert.ok(app.el.textContent.includes('2. Suggested Solutions'));assert.ok(app.el.textContent.includes('3. Graded Report'));assert.ok(app.el.textContent.includes('Final score: 81/100'));
-    assert.equal(app.el.querySelector('a[href="/api/submissions/submission-ocs/answers"]')?.textContent,'Download answers (.docx)');assert.ok(app.el.querySelector('a[href="/api/solutions/guide-1"]'));assert.ok(app.el.querySelector('a[href="/api/reports/report-1"]'));
+    assert.equal(app.el.querySelector('a[href="/api/submissions/submission-ocs/answers?format=docx"]')?.textContent,'Download as Word (.docx)');assert.ok(app.el.querySelector('a[href="/api/solutions/guide-1"]'));assert.ok(app.el.querySelector('a[href="/api/reports/report-1"]'));
     const before=navigation.length;await click([...app.el.querySelectorAll('button')].find(button=>button.textContent==='MCS'));assert.equal(browser.location.search,'?level=MCS');assert.ok(app.el.textContent.includes('No mock exams are available in this level.'));assert.equal(navigation.length,before);
   }finally{await app.unmount();}
 });

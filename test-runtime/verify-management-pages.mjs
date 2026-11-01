@@ -46,7 +46,7 @@ accessType='enrolled';trialExamId=null;
 const denied=renderToStaticMarkup(await StudentDashboard({searchParams:Promise.resolve({notice:'exam-level'})}));
 assert.ok(denied.includes('This mock is unavailable for your assigned level (SCS)'));
 console.log('PASS: mismatched and RLS-hidden exams redirect to dashboard with a readable notice before the exam starts');
-ownAttempt=true;status='archived';const dashboard=renderToStaticMarkup(await StudentDashboard({searchParams:Promise.resolve({})}));assert.ok(dashboard.includes('Continue attempt'));assert.ok(dashboard.includes(`/exam/${examId}`));assert.ok(dashboard.includes('Preserved tutor feedback'));assert.ok(dashboard.includes('Historical mock'));assert.ok(dashboard.includes('In progress'));assert.ok(dashboard.includes('Download answers (.docx)'));
+ownAttempt=true;status='archived';const dashboard=renderToStaticMarkup(await StudentDashboard({searchParams:Promise.resolve({})}));assert.ok(dashboard.includes('Continue attempt'));assert.ok(dashboard.includes(`/exam/${examId}`));assert.ok(dashboard.includes('Preserved tutor feedback'));assert.ok(dashboard.includes('Historical mock'));assert.ok(dashboard.includes('In progress'));assert.ok(dashboard.includes('Download as Word (.docx)'));
 console.log('PASS: dashboard retains resume links and graded feedback while archived papers disappear from available mocks');
 assert.match(dashboard,/<nav aria-label="Student portal navigation"><a href="https:\/\/learn\.keystoneacademia\.com\/" target="_blank" rel="noopener noreferrer"/);
 console.log('PASS: student dashboard header exposes safe new-tab LearnWorlds navigation');

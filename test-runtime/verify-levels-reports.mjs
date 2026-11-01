@@ -6,10 +6,10 @@ import {loader} from './component-loader.mjs';
 import {legacyDocFixture} from './report-fixtures.mjs';
 
 const sid='00000000-0000-4000-8000-000000000070',reportId='00000000-0000-4000-8000-000000000071',solutionId='00000000-0000-4000-8000-000000000072';
-let role='student',active=true,signedIn=true,owns=true,reportVisible=true,solutionVisible=true,uploadBytes=Buffer.from('%PDF-1.7\nreport'),rpcFailure=null;
+let role='student',accessType='enrolled',active=true,signedIn=true,owns=true,reportVisible=true,solutionVisible=true,uploadBytes=Buffer.from('%PDF-1.7\nreport'),rpcFailure=null;
 const rpcCalls=[],signedCalls=[];
-const client={auth:{getUser:async()=>({data:{user:signedIn?{id:'own-user'}:null},error:null})},from(table){
-  return {select(){return this;},eq(){return this;},order(){return this;},single:async()=>({data:table==='profiles'?{id:'own-user',full_name:'Candidate One',role,is_active:active,assigned_level:'OCS'}: {name:'Operational mock',level:'OCS'},error:null}),maybeSingle:async()=>({data:table==='submissions'?{id:sid,session_id:'session',student_id:owns?'own-user':'other-user',exam_id:'paper',submitted_at:'2026-10-09T09:00:00Z'}:table==='exam_materials'?solutionVisible?{storage_path:'staff/solution.pdf',name:'model-solution.pdf',kind:'solution'}:null:reportVisible?{storage_path:`tutor/${sid}/report.pdf`,file_name:'graded.pdf'}:null,error:null}),then(resolve){return Promise.resolve({data:table==='exam_questions'?[question]:table==='exam_answers'?[{question_id:'section-1',answer_text:rich}]:[],error:null}).then(resolve);}};
+const client={auth:{getUser:async()=>({data:{user:signedIn?{id:'own-user',is_anonymous:accessType==='trial'}:null},error:null})},from(table){
+  return {select(){return this;},eq(){return this;},order(){return this;},single:async()=>({data:table==='profiles'?{id:'own-user',full_name:'Candidate One',role,is_active:active,assigned_level:'OCS',access_type:accessType}: {name:'Operational mock',level:'OCS'},error:null}),maybeSingle:async()=>({data:table==='submissions'?{id:sid,session_id:'session',student_id:owns?'own-user':'other-user',exam_id:'paper',submitted_at:'2026-10-09T09:00:00Z'}:table==='exam_materials'?solutionVisible?{storage_path:'staff/solution.pdf',name:'model-solution.pdf',kind:'solution'}:null:reportVisible?{storage_path:`tutor/${sid}/report.pdf`,file_name:'graded.pdf'}:null,error:null}),then(resolve){return Promise.resolve({data:table==='exam_questions'?[question]:table==='exam_answers'?[{question_id:'section-1',answer_text:rich}]:[],error:null}).then(resolve);}};
 },storage:{from:bucket=>({download:async()=>({data:new Blob([uploadBytes]),error:null}),createSignedUrl:async(...args)=>{signedCalls.push({bucket,args});return{data:{signedUrl:'https://storage.example.invalid/private-signed'},error:null};}})},rpc:async(name,payload)=>{rpcCalls.push({name,payload});return{data:reportId,error:rpcFailure};}};
 const load=loader({'server-only':{},'next/navigation':{redirect(){throw Error('redirect');}},'next/link':{__esModule:true,default:({href,children,...props})=>React.createElement('a',{href,...props},children)},'@/lib/supabase/server':{createClient:async()=>client}});
 const {mockSchema}=load('lib/dashboard/validation.ts');
@@ -57,14 +57,27 @@ const get=new Request('http://localhost:3001/api/submissions/'+sid+'/answers');
 let response=await download.GET(get,context);assert.equal(response.status,200);assert.equal(response.headers.get('content-type'),DOCX_MIME);assert.match(response.headers.get('content-disposition'),/attachment;.*\.docx/);assert.equal(response.headers.get('cache-control'),'private, no-store');assert.ok((await response.arrayBuffer()).byteLength>1000);
 assert.match(response.headers.get('content-disposition'),/CandidateOne_Mock_2026-10-09_1400\.docx/);
 owns=false;assert.equal((await download.GET(get,context)).status,404);role='tutor';assert.equal((await download.GET(get,context)).status,200);
-for(const exportRole of ['student','tutor','admin']){
-  role=exportRole;owns=true;
+for(const exportRole of ['trial','student','tutor','admin']){
+  role=exportRole==='trial'?'student':exportRole;accessType=exportRole==='trial'?'trial':'enrolled';owns=true;
   const pdfRequest=new Request(`${get.url}?format=pdf`);
   const pdfResponse=await download.GET(pdfRequest,context);
   assert.equal(pdfResponse.status,200);assert.equal(pdfResponse.headers.get('content-type'),'application/pdf');
   assert.match(pdfResponse.headers.get('content-disposition'),/CandidateOne_Mock_2026-10-09_1400\.pdf/);
   assert.equal(pdfResponse.headers.get('cache-control'),'private, no-store');assert.equal(pdfResponse.headers.get('x-content-type-options'),'nosniff');
   assert.equal(Buffer.from(await pdfResponse.arrayBuffer()).subarray(0,5).toString(),'%PDF-');
+  const dataResponse=await download.GET(new Request(`${get.url}?format=data`),context);
+  assert.equal(dataResponse.status,200);assert.equal(dataResponse.headers.get('cache-control'),'private, no-store');
+  assert.equal(dataResponse.headers.get('x-content-type-options'),'nosniff');
+  const payload=await dataResponse.json();assert.equal(payload.input.answers['section-1'],rich);
+  assert.equal(payload.input.candidate,'Candidate One');assert.equal(payload.input.questions[0].content.subject,'Funding');
+  assert.equal(payload.filename,'CandidateOne_Mock_2026-10-09_1400.pdf');
+}
+accessType='enrolled';
+for(const format of ['data','docx','pdf']) {
+  const request=new Request(`${get.url}?format=${format}`);
+  role='student';owns=false;assert.equal((await download.GET(request,context)).status,404);
+  owns=true;active=false;assert.equal((await download.GET(request,context)).status,403);
+  active=true;signedIn=false;assert.equal((await download.GET(request,context)).status,401);signedIn=true;
 }
 assert.equal((await download.GET(new Request(`${get.url}?format=xls`),context)).status,400);
 role='student';owns=false;assert.equal((await download.GET(new Request(`${get.url}?format=pdf`),context)).status,404);

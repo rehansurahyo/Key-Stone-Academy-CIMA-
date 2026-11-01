@@ -1,4 +1,5 @@
 import "server-only";
+import { cache } from "react";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import type { Profile, StaffRole } from "./types";
@@ -8,7 +9,9 @@ export class DashboardError extends Error {
   constructor(message: string, public status = 400) { super(message); }
 }
 
-export async function requirePortalUser() {
+// Reuse verification within one Server Component render, never across users or
+// later requests. Fresh requests still verify the session and current profile.
+export const requirePortalUser = cache(async () => {
   const supabase = await createClient();
   const { data: { user }, error } = await supabase.auth.getUser();
   if (error || !user) throw new DashboardError("Please sign in to continue.", 401);
@@ -21,7 +24,7 @@ export async function requirePortalUser() {
     throw new DashboardError("You do not have access to this area.", 403);
   }
   return { supabase, user, profile };
-}
+});
 
 export async function requireStaff(role?: StaffRole) {
   const context = await requirePortalUser();
