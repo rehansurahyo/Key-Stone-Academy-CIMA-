@@ -26,3 +26,8 @@ Tests: `verify-student-ui.mjs`, `verify-trial-session.mjs`,
 `verify-submission-deletion-api.mjs` and `npm run build`.
 No SQL migration is required for these updates. No real student attempt was
 deleted, reset or changed during testing.
+
+`verify-exam-exit-browser.mjs` also exercises the real runtime in desktop/mobile
+Chromium: custom exit confirmation, cancel preserving the draft and dismissing
+the browser's native reload warning. Set `PLAYWRIGHT_MODULE` and
+`BROWSER_EXECUTABLE` when using the bundled browser runtime.

@@ -25,7 +25,7 @@ const writes=[];
 const server=createServer(async(request,response)=>{
   if(request.url==='/tools.js'){response.setHeader('Content-Type','text/javascript');response.end(bundle);}
   else if(request.url.startsWith('/api/')){let body='';for await(const chunk of request)body+=chunk;writes.push({method:request.method,body:JSON.parse(body)});response.setHeader('Content-Type','application/json');response.end(JSON.stringify({deleted:true,cleanup_pending:false}));}
-  else{response.setHeader('Content-Type','text/html');response.end('<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1"><style>'+css+'</style><div id="root"></div><script src="/tools.js"></script>');}
+  else{response.setHeader('Content-Type','text/html; charset=utf-8');response.end('<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>'+css+'</style><div id="root"></div><script src="/tools.js"></script>');}
 });await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
 const{chromium}=await import(process.env.PLAYWRIGHT_MODULE?pathToFileURL(process.env.PLAYWRIGHT_MODULE).href:'playwright');
 const browser=await chromium.launch({headless:true,...(process.env.BROWSER_EXECUTABLE?{executablePath:process.env.BROWSER_EXECUTABLE}:{})});
@@ -36,6 +36,7 @@ try{for(const[width,height]of[[1440,900],[390,844],[320,568]]){
   await score.fill('140');await page.getByRole('button',{name:'Publish / Final Submit',exact:true}).click();await page.getByText('Evaluation saved.',{exact:true}).waitFor();assert.equal(writes.at(-1).body.score_max,150);assert.equal(writes.at(-1).body.score,140);
   const file=page.getByLabel('Reference document',{exact:true});await file.setInputFiles({name:'wrong.pdf',mimeType:'application/pdf',buffer:Buffer.from('%PDF-1.7 synthetic')});await page.getByRole('button',{name:'Clear Reference document',exact:true}).click();assert.equal(await file.inputValue(),'');assert.equal(await file.evaluate(el=>el.files.length),0);
   const remove=page.getByRole('button',{name:/^Delete report long-reference/});await remove.click();const dialog=page.getByRole('alertdialog');await dialog.waitFor();const box=await dialog.boundingBox();assert.ok(box.x>=0&&box.y>=0&&box.x+box.width<=width+1&&box.y+box.height<=height+1);assert.equal(await dialog.evaluate(el=>el.scrollWidth>el.clientWidth+1),false);
+  await dialog.evaluate(async el=>{await Promise.all(el.getAnimations({subtree:true}).map(animation=>animation.finished.catch(()=>{})));});
   await page.screenshot({path:path.join(out,'confirmation-'+width+'.png')});before=writes.length;await dialog.getByRole('button',{name:'Cancel',exact:true}).click();assert.equal(writes.length,before);
   await remove.click();await page.getByRole('button',{name:'Delete report permanently',exact:true}).click();await page.getByText('Report removed',{exact:true}).waitFor();assert.equal(writes.at(-1).method,'DELETE');
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);assert.deepEqual(errors,[]);await page.close();
