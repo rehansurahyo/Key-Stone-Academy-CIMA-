@@ -12,12 +12,12 @@ export async function removeReport(submissionId: string, reportId: string) {
   return result.cleanup_pending;
 }
 
-export function DeleteReportButton({ submissionId, reportId, name, onDeleted }: { submissionId: string; reportId: string; name: string; onDeleted: () => void }) {
+export function DeleteReportButton({ submissionId, reportId, name, onDeleted, disabled = false }: { submissionId: string; reportId: string; name: string; onDeleted: () => void; disabled?: boolean }) {
   const router = useRouter();
   const [open, setOpen] = useState(false), [busy, setBusy] = useState(false), [error, setError] = useState("");
   const pending = useRef(false);
   return <>
-    <button type="button" aria-label={`Delete report ${name}`} className="rounded-md border border-red-200 px-3 py-2 text-xs font-semibold text-red-700" onClick={() => { setError(""); setOpen(true); }}>Delete report</button>
+    <button type="button" disabled={disabled} aria-label={`Delete report ${name}`} className="rounded-md border border-red-200 px-3 py-2 text-xs font-semibold text-red-700 disabled:opacity-50" onClick={() => { setError(""); setOpen(true); }}>Delete report</button>
     <AlertDialog open={open} onOpenChange={next => { if (!pending.current) setOpen(next); }}><AlertDialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto [overflow-wrap:anywhere]">
       <AlertDialogHeader><AlertDialogTitle>Delete attached report?</AlertDialogTitle><AlertDialogDescription>Remove “{name}” from this submission? The student’s answers, grade and other reports are kept. This file removal cannot be undone.</AlertDialogDescription></AlertDialogHeader>
       {error && <p role="alert" className="text-sm text-red-700">{error}</p>}

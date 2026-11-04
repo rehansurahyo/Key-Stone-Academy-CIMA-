@@ -835,18 +835,20 @@ function DocumentViewer({
   open,
   onOpenChange,
   sections,
-  material,
+  materials = [],
   examLevel,
   useSample = true,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   sections: Question[];
-  material?: ExamMaterial;
+  materials?: ExamMaterial[];
   examLevel?: ExamLevel;
   useSample?: boolean;
 }) {
   const [zoom, setZoom] = useState(85);
+  const [selectedMaterial, setSelectedMaterial] = useState<string | null>(null);
+  const material = materials.find(item => item.id === selectedMaterial) ?? materials[0];
   const signed = useExamMaterialUrl(material?.storage_path, open);
   const documentUrl = material ? signed.url : useSample ? process.env.NEXT_PUBLIC_PRESEEN_PDF_URL : null;
   const totalMinutes = sections.reduce((acc, s) => acc + s.timeMinutes, 0);
@@ -915,6 +917,7 @@ function DocumentViewer({
             <X className="size-4" />
           </button>
         </div>
+        {materials.length > 1 && <div role="group" aria-label="Pre-seen documents" className="flex shrink-0 gap-2 overflow-x-auto border-b bg-slate-50 p-2">{materials.map(item => <button key={item.id} type="button" aria-pressed={item.id === material?.id} className={`shrink-0 border px-3 py-1 text-xs ${item.id === material?.id ? "bg-[#133E68] text-white" : "bg-white text-slate-700"}`} onClick={() => setSelectedMaterial(item.id)}>{item.name}</button>)}</div>}
         <div className="flex h-10 flex-shrink-0 items-center justify-center gap-1.5 sm:gap-2 border-b border-[#9aa7b4] bg-[#eef1f4] px-2 overflow-x-auto touch-scroll">
           <button
             onClick={() => setZoom((value) => Math.max(60, value - 10))}
@@ -2078,7 +2081,7 @@ export default function ExamRuntime({
       <DocumentViewer
         open={preseen}
         onOpenChange={setPreseen}
-        material={materials.find(m => m.kind === "preseen")}
+        materials={materials.filter(m => m.kind === "preseen")}
         examLevel={resolvedExamLevel}
         useSample={examId === LEGACY_EXAM_ID}
         sections={sections}

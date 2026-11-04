@@ -223,6 +223,20 @@ await test('a new trial confirms Go ahead or Go back before activating the exam;
   root=createRoot(el);await act(async()=>{root.render(React.createElement(ExamRuntime,{examId:trialExam,isTrial:true,trialAttemptStarted:true,initialQuestions:[questionsData[0]]}));await new Promise(r=>setTimeout(r,20));});
   await click(el.querySelector('#structure-next-button'));assert.equal(document.querySelector('[role=alertdialog]'),null);assert.ok(el.textContent.includes('TIME REMAINING'));
 });
+await test('students can switch between every uploaded pre-seen and reference document without losing their answer',async()=>{
+  await act(async()=>root.unmount());
+  const examId='00000000-0000-4000-8000-000000009221',previousStorage=client.storage;
+  client.storage={from:()=>({createSignedUrl:async path=>({data:{signedUrl:'https://materials.example.test/'+path},error:null})})};
+  const materials=[['pre-a','preseen','first.pdf'],['pre-b','preseen','second.pdf'],['ref-a','reference','chart.png'],['ref-b','reference','table.jpg']].map(([id,kind,name])=>({id,exam_id:examId,name,kind,storage_path:'qa/'+name,question_id:kind==='reference'?'section-1':null}));
+  browser.localStorage.setItem(`keystone-cima-exam-ui-v1-${examId}-${auth.user.id}`,JSON.stringify({flow:'exam',questionIndex:0,screen:'answer'}));
+  root=createRoot(el);await act(async()=>{root.render(React.createElement(ExamRuntime,{examId,examLevel:'MCS',materials,initialQuestions:[questionsData[0]]}));await new Promise(r=>setTimeout(r,20));});
+  try{
+    const answer=el.querySelector('.tiptap').textContent;await click(button(el,'Pre-seen'));
+    const tabs=el.querySelector('[aria-label="Pre-seen documents"]');assert.ok(tabs);assert.equal(tabs.querySelectorAll('button').length,2);
+    await click(button(tabs,'second.pdf'));assert.ok(el.querySelector('iframe[title="Complete pre-seen document"]').src.includes('qa/second.pdf'));assert.equal(button(tabs,'second.pdf').getAttribute('aria-pressed'),'true');
+    await click(button(el,'Reference Material'));await click(button(el,'table.jpg'));assert.ok(el.querySelector('img[alt="table.jpg"]').src.includes('qa/table.jpg'));assert.equal(el.querySelector('.tiptap').textContent,answer);
+  }finally{client.storage=previousStorage;}
+});
 await test('student login ignores an exam return URL and always lands on the shared dashboard',async()=>{
   await act(async()=>root.unmount());
   const destinations=[];browser.location.replace=url=>destinations.push(url);

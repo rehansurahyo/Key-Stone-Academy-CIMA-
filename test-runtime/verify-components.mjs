@@ -26,7 +26,7 @@ const {GradingForm}=load('components/dashboard/grading-form.tsx');
 const {SubmissionTable}=load('components/dashboard/submission-table.tsx');
 const {BulkDeleteSubmissions}=load('components/dashboard/bulk-delete-submissions.tsx');
 const {DeleteReportButton,ReportRemovalCleanup}=load('components/dashboard/delete-report-button.tsx');
-const {MaterialFileInput}=load('components/dashboard/material-file-input.tsx');
+const {MaterialFileInput,MaterialFilesInput}=load('components/dashboard/material-file-input.tsx');
 const {LeadsTable}=load('components/dashboard/leads-table.tsx');
 const {SubmissionCleanupQueue}=load('components/dashboard/delete-submission-button.tsx');
 const {default:StaffLogin}=load('app/staff/login/page.tsx');
@@ -464,6 +464,72 @@ await test('graded report UI uploads PDF/DOCX/DOC without refresh; attaches meta
     assert.ok(app.el.querySelector('[role=alert]').textContent.includes('Connection lost'));assert.equal(input.files[0].name,'retry.pdf');
     fail=false;await submit(app.el.querySelector('form'));assert.equal(uploads.length,uploadCount,'Retry reuses the already uploaded object');assert.equal(calls.at(-1).body.storage_path,uncertainPath);
     const count=uploads.length;await select('not-a-report.exe');await submit(app.el.querySelector('form'));assert.equal(uploads.length,count);assert.ok(app.el.querySelector('[role=alert]').textContent.includes('PDF or Word'));
+  }finally{await app.unmount();}
+});
+async function pickFiles(input,files){await act(async()=>{Object.defineProperty(input,'files',{value:files,configurable:true});input.dispatchEvent(new Event('change',{bubbles:true}));});}
+await test('multiple-file picker appends unique files, retains cancelled selections, removes one file and allows reselecting it',async()=>{
+  let selected=[];function Harness(){const[files,setFiles]=React.useState([]);selected=files;return React.createElement(MaterialFilesInput,{label:'Batch QA',accept:'.pdf',files,onChange:setFiles});}
+  const app=await mount(Harness);try{
+    const input=app.el.querySelector('input'),first=new File(['PDF'],'first.pdf'),second=new File(['PDF'],'second.pdf');assert.equal(input.multiple,true);
+    await pickFiles(input,[first,second]);await pickFiles(input,[first]);await pickFiles(input,[]);assert.equal(selected.length,2);
+    await click(app.el.querySelector('[aria-label="Remove Batch QA: first.pdf"]'));assert.deepEqual(selected.map(f=>f.name),['second.pdf']);
+    await pickFiles(input,[first]);assert.deepEqual(selected.map(f=>f.name),['second.pdf','first.pdf']);assert.equal(input.value,'');
+  }finally{await app.unmount();}
+});
+await test('multi-file mock edit appends PDFs and reference images, removes only selected materials and preserves historical versions',async()=>{
+  const uploads=[],calls=[];
+  client={auth:{getUser:async()=>({data:{user:{id:'multi-tutor'}}})},storage:{from:()=>({upload:async(path,file,options)=>{uploads.push({path,name:file.name,options});return{error:null};},remove:async()=>{throw Error('Must not delete historical objects');}})}};
+  globalThis.fetch=async(url,options)=>{calls.push({url,body:JSON.parse(options.body)});return Response.json({id:'copy',action:'copied'});};
+  const content={from:'Director',to:'Manager',subject:'Batch question',intro:'Scenario',taskPrompt:'Evaluate',subtasks:[{description:'Strategy',weightage:100}],weightageUnit:'percent'};
+  const retained=[['old-preseen','preseen',null],['old-solution','solution',null],['old-reference','reference','section-1'],['remove-reference','reference','section-1']].map(([id,kind,question_id])=>({id,name:id+'.pdf',kind,question_id,storage_path:'original/'+id+'.pdf'}));
+  const initialExam={exam:{...draftExam,level:'OCS',revision:4},attemptCount:2,questions:[{id:'q1',question_id:'section-1',duration_seconds:2700,content}],materials:retained};
+  const pdf=name=>new File(['%PDF-1.7 test'],name,{type:'application/pdf'});
+  const app=await mount(MockUploadForm,{initialExam});try{
+    await pickFiles(app.el.querySelector('[aria-label="Pre-seen PDF"]'),[pdf('preseen-a.pdf'),pdf('preseen-b.pdf')]);
+    await pickFiles(app.el.querySelector('[aria-label="Suggested solution PDF"]'),[pdf('solution-a.pdf'),pdf('solution-b.pdf')]);
+    await pickFiles(app.el.querySelector('[aria-label="Question 1 reference material"]'),[pdf('wrong.pdf'),new File([new Uint8Array([137,80,78,71,13,10,26,10,0])],'chart.png'),new File([new Uint8Array([255,216,255,224])],'table.jpg')]);
+    await click(app.el.querySelector('[aria-label="Remove Question 1 reference material: wrong.pdf"]'));
+    await click(app.el.querySelector('[aria-label="Remove retained PDF remove-reference.pdf"]'));assert.equal(calls.length,0);
+    await submit(app.el.querySelector('form'));assert.equal(calls.length,1,app.el.querySelector('[role=alert]')?.textContent);assert.equal(uploads.length,6);
+    const payload=calls[0].body;assert.equal(payload.materials.length,9);assert.equal(payload.level,'OCS');assert.equal(payload.revision,4);
+    for(const kind of ['preseen','solution','reference'])assert.equal(payload.materials.filter(m=>m.kind===kind).length,3);
+    assert.ok(payload.materials.filter(m=>m.kind==='reference').every(m=>m.question_id==='section-1'));
+    assert.ok(payload.materials.some(m=>m.storage_path==='original/old-preseen.pdf'));assert.ok(!payload.materials.some(m=>m.name==='wrong.pdf'||m.name==='remove-reference.pdf'));
+    assert.equal(new Set(uploads.map(u=>u.path)).size,6);assert.equal(uploads.find(u=>u.name==='chart.png').options.contentType,'image/png');assert.equal(retained.length,4);
+  }finally{await app.unmount();}
+});
+await test('multi-file mock validates total count before upload and cleans only new objects on a partial storage failure',async()=>{
+  const uploads=[],cleanup=[];let requests=0;
+  client={auth:{getUser:async()=>({data:{user:{id:'multi-tutor'}}})},storage:{from:()=>({upload:async(path)=>{uploads.push(path);return{error:uploads.length===2?new Error('Storage unavailable'):null};},remove:async paths=>{cleanup.push(...paths);return{error:null};}})}};
+  globalThis.fetch=async()=>{requests++;return Response.json({});};
+  const pdf=name=>new File(['%PDF-1.7 test'],name);
+  let app=await mount(MockUploadForm);try{await fillMock(app.el);await pickFiles(app.el.querySelector('[aria-label="Pre-seen PDF"]'),Array.from({length:31},(_,i)=>pdf(i+'.pdf')));await submit(app.el.querySelector('form'));assert.equal(uploads.length,0);assert.match(app.el.querySelector('[role=alert]').textContent,/up to 30/);}finally{await app.unmount();}
+  app=await mount(MockUploadForm);try{await fillMock(app.el);await pickFiles(app.el.querySelector('[aria-label="Pre-seen PDF"]'),[pdf('one.pdf'),pdf('two.pdf'),pdf('three.pdf')]);await submit(app.el.querySelector('form'));assert.equal(uploads.length,2);assert.deepEqual(cleanup,[uploads[0]]);assert.equal(requests,0);assert.match(app.el.querySelector('[role=alert]').textContent,/Storage unavailable/);assert.equal(app.el.querySelectorAll('[role=listitem]').length,3);}finally{await app.unmount();}
+});
+await test('report batch retains confirmed files, retries an uncertain attachment without duplication and independently deletes an uploaded file',async()=>{
+  const uploads=[],calls=[],receipts=new Map();let interrupted=true;
+  client={auth:{getUser:async()=>({data:{user:{id:'batch-tutor'}}})},storage:{from:()=>({upload:async(path,file)=>{uploads.push({path,name:file.name});return{error:null};},remove:async()=>{throw Error('Uncertain objects must not be removed');}})}};
+  globalThis.fetch=async(url,options)=>{const body=JSON.parse(options.body);calls.push({url,method:options.method,body});if(options.method==='DELETE')return Response.json({deleted:true,cleanup_pending:false});if(!receipts.has(body.storage_path))receipts.set(body.storage_path,'batch-'+receipts.size);if(body.file_name==='second.docx'&&interrupted){interrupted=false;throw Error('Connection lost after commit');}return Response.json({id:receipts.get(body.storage_path)});};
+  const app=await mount(SubmissionReports,{submissionId:'batch-submission',reports:[]});try{
+    const before=navigation.length,input=app.el.querySelector('input[type=file]');
+    const files=[new File(['PDF'],'first.pdf'),new File(['DOCX'],'second.docx'),new File(['DOC'],'third.doc')];await pickFiles(input,files);await submit(app.el.querySelector('form'));
+    assert.equal(uploads.length,2);assert.equal(receipts.size,2);assert.ok(app.el.querySelector('a').textContent.includes('first.pdf'));assert.match(app.el.querySelector('[role=alert]').textContent,/1 of 3 reports attached/);
+    assert.equal(app.el.querySelector('[aria-label="Remove Graded report document: second.docx"]').disabled,true);assert.equal(app.el.querySelectorAll('[role=listitem]').length,2);
+    const uncertain=calls.at(-1).body.storage_path;await submit(app.el.querySelector('form'));
+    assert.equal(uploads.length,3);assert.equal(calls[2].body.storage_path,uncertain);assert.equal(app.el.querySelectorAll('a').length,3);assert.equal(app.el.querySelectorAll('[role=listitem]').length,0);assert.equal(navigation.length,before);
+    await click(app.el.querySelector('[aria-label="Delete report second.docx"]'));await click([...document.querySelectorAll('[role=alertdialog] button')].find(b=>b.textContent==='Delete report permanently'));
+    assert.equal(app.el.querySelectorAll('a').length,2);assert.ok([...app.el.querySelectorAll('a')].every(a=>a.textContent!=='second.docx'));assert.ok(app.el.textContent.includes('first.pdf'));assert.ok(app.el.textContent.includes('third.doc'));
+  }finally{await app.unmount();}
+});
+await test('report batch validates all files before upload and ignores a duplicate submit while a storage request is pending',async()=>{
+  let uploads=0,resolveUpload,hold=false;const calls=[];
+  client={auth:{getUser:async()=>({data:{user:{id:'batch-tutor'}}})},storage:{from:()=>({upload:async()=>{uploads++;if(hold)await new Promise(resolve=>{resolveUpload=resolve;});return{error:null};}})}};
+  globalThis.fetch=async(_url,options)=>{calls.push(JSON.parse(options.body));return Response.json({id:'batch-'+calls.length});};
+  const app=await mount(SubmissionReports,{submissionId:'batch',reports:[]});try{
+    const input=app.el.querySelector('input');await pickFiles(input,[new File(['PDF'],'good.pdf'),new File(['bad'],'wrong.exe')]);await submit(app.el.querySelector('form'));assert.equal(uploads,0);assert.match(app.el.querySelector('[role=alert]').textContent,/wrong.exe/);
+    await click(app.el.querySelector('[aria-label="Remove Graded report document: wrong.exe"]'));hold=true;
+    await act(async()=>{const form=app.el.querySelector('form');form.dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}));form.dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}));await new Promise(r=>setTimeout(r,10));});assert.equal(uploads,1);assert.equal(input.disabled,true);
+    await act(async()=>resolveUpload());assert.equal(calls.length,1);assert.equal(app.el.querySelectorAll('a').length,1);
   }finally{await app.unmount();}
 });
 await browser.happyDOM.close();if(failures.length)process.exitCode=1;
