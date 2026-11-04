@@ -138,9 +138,13 @@ await test('dashboard exit saves drafts and timer without submitting; failed sav
   await act(async()=>{const p=document.createElement('p');p.textContent='Pending draft before exit';editor.append(p);await new Promise(r=>setTimeout(r,40));});
   globalThis.fetch=async()=>new Response('{"error":"Offline save"}',{status:503});
   await click(button(el,'Exit to Dashboard'));
+  let exitDialog=document.querySelector('[role=alertdialog]');assert.ok(exitDialog.textContent.includes('timer keeps running'));
+  assert.equal(navigations.length,0);await click(button(exitDialog,'Stay in exam'));assert.equal(navigations.length,0);
+  await click(button(el,'Exit to Dashboard'));exitDialog=document.querySelector('[role=alertdialog]');
+  await click(button(exitDialog,'Save and exit'));
   assert.equal(navigations.length,0);assert.ok(el.textContent.includes('Your latest answer could not be saved'));assert.equal(completions,0);
   let timerSynced=false;const previousRpc=client.rpc;client.rpc=async()=>{timerSynced=true;return{error:null};};
-  globalThis.fetch=previousFetch;await click(button(el,'Exit to Dashboard'));
+  globalThis.fetch=previousFetch;await click(button(document.querySelector('[role=alertdialog]'),'Save and exit'));
   assert.equal(navigations.at(-1),'/dashboard');assert.ok(timerSynced);assert.equal(completions,0);
   client.rpc=previousRpc;
   // Real navigation unmounts the runtime; remount to continue submission scenarios.

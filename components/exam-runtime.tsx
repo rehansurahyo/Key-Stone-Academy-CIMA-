@@ -1440,6 +1440,9 @@ export default function ExamRuntime({
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
   const [exiting, setExiting] = useState(false);
+  const [confirmExit, setConfirmExit] = useState(false);
+  const leavingRef = useRef(false);
+  const exitInFlight = useRef(false);
   const [exitError, setExitError] = useState<string | null>(null);
   const [uiStateHydrated, setUiStateHydrated] = useState(false);
   const [calculator, setCalculator] = useState(false);
@@ -1644,22 +1647,38 @@ export default function ExamRuntime({
   });
 
   const exitToDashboard = async () => {
-    if (exiting || submitting || transitioning) return;
+    if (exitInFlight.current || exiting || submitting || transitioning) return;
+    exitInFlight.current = true;
     setExiting(true);
     setExitError(null);
     try {
+      if (flow === "exam" && !examSession.sessionId) throw new Error("Your exam session is not connected yet.");
       if (!(await flushCurrentAnswer())) {
         setExitError("Your latest answer could not be saved. Please reconnect and try exiting again.");
         setExiting(false);
+        exitInFlight.current = false;
         return;
       }
       if (flow === "exam") await syncCurrentTimer();
+      leavingRef.current = true;
       window.location.assign("/dashboard");
     } catch {
       setExitError("Unable to sync your exam progress. Please try again.");
       setExiting(false);
+      exitInFlight.current = false;
     }
   };
+
+  useEffect(() => {
+    if (flow !== "exam" || examSession.completed) return;
+    const warnBeforeLeaving = (event: BeforeUnloadEvent) => {
+      if (leavingRef.current) return;
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", warnBeforeLeaving);
+    return () => window.removeEventListener("beforeunload", warnBeforeLeaving);
+  }, [flow, examSession.completed]);
 
   const statusRef = useRef({
     flow,
@@ -1846,7 +1865,7 @@ export default function ExamRuntime({
 
         {/* Right: explicit exit action and question progress */}
         <div className="flex items-center justify-end gap-3 shrink-0 text-right">
-          <button type="button" onClick={() => void exitToDashboard()} disabled={exiting || submitting || transitioning} className="inline-flex items-center gap-1 rounded-sm border border-white/60 px-2 py-1 text-xs font-semibold hover:bg-white/15 disabled:opacity-50">
+          <button type="button" onClick={() => { setExitError(null); setConfirmExit(true); }} disabled={exiting || submitting || transitioning} className="inline-flex items-center gap-1 rounded-sm border border-white/60 px-2 py-1 text-xs font-semibold hover:bg-white/15 disabled:opacity-50">
             <ArrowLeft className="size-3.5" />{exiting ? "Saving & exiting…" : "Exit to Dashboard"}
           </button>
           <span className="text-xs sm:text-sm font-bold text-white tracking-wide">
@@ -2114,6 +2133,21 @@ export default function ExamRuntime({
             >
               Yes, End Section
             </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={confirmExit} onOpenChange={open => { if (!exitInFlight.current) setConfirmExit(open); }}>
+        <AlertDialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Leave the exam?</AlertDialogTitle>
+            <AlertDialogDescription>Your current question timer keeps running while you are away. You may run out of time before you return. Saving and exiting does not submit your exam.</AlertDialogDescription>
+          </AlertDialogHeader>
+          {isTrial && <p className="text-sm text-slate-600">Your free-trial attempt has already started. Leaving does not give you another attempt.</p>}
+          {exitError && <p role="alert" className="text-sm text-red-700">{exitError}</p>}
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={exiting}>Stay in exam</AlertDialogCancel>
+            <AlertDialogAction disabled={exiting || submitting || transitioning} onClick={event => { event.preventDefault(); void exitToDashboard(); }}>{exiting ? "Saving progress…" : "Save and exit"}</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

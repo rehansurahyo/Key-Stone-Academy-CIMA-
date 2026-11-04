@@ -24,6 +24,7 @@ const {MockExamLibrary}=load('components/dashboard/mock-exam-library.tsx');
 const {ExamTaskList}=load('components/exam-task-list.tsx');
 const {GradingForm}=load('components/dashboard/grading-form.tsx');
 const {SubmissionTable}=load('components/dashboard/submission-table.tsx');
+const {BulkDeleteSubmissions}=load('components/dashboard/bulk-delete-submissions.tsx');
 const {LeadsTable}=load('components/dashboard/leads-table.tsx');
 const {SubmissionCleanupQueue}=load('components/dashboard/delete-submission-button.tsx');
 const {default:StaffLogin}=load('app/staff/login/page.tsx');
@@ -38,6 +39,20 @@ async function change(el,value){const setter=Object.getOwnPropertyDescriptor(el.
 async function click(el){await act(async()=>el.click());}
 async function submit(el){await act(async()=>{el.dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}));await new Promise(r=>setTimeout(r,10));});}
 const label=(el,text)=>[...el.querySelectorAll('label')].find(l=>l.textContent.startsWith(text)).querySelector('input,textarea,select');
+await test('bulk deletion cancels safely, rejects double clicks and reports partial outcomes without removing failed submissions',async()=>{
+  const submissions=[1,2].map(n=>({id:`bulk-${n}`,revision:n,student:{full_name:`Student ${n}`},exam:{name:'OCS Mock'}}));
+  const calls=[],removed=[];let mode='partial',resolveRequest;
+  globalThis.fetch=async(url,options)=>{calls.push({url,body:JSON.parse(options.body)});if(mode==='pending')return new Promise(resolve=>{resolveRequest=resolve;});return url.includes('bulk-2')?Response.json({error:'Submission changed. Reload.'},{status:409}):Response.json({deleted:true,cleanup_pending:false,pending_files:0});};
+  const app=await mount(BulkDeleteSubmissions,{submissions,onDeleted:ids=>removed.push(...ids),onBusyChange:()=>{}});
+  try{
+    await click(app.el.querySelector('button'));await click([...document.querySelectorAll('[role=alertdialog] button')].find(b=>b.textContent==='Cancel'));assert.equal(calls.length,0);
+    await click(app.el.querySelector('button'));let dialog=document.querySelector('[role=alertdialog]');await change(dialog.querySelector('input'),'DELETE');
+    await click([...dialog.querySelectorAll('button')].find(b=>b.textContent==='Delete selected permanently'));
+    assert.deepEqual(removed,['bulk-1']);assert.equal(calls.length,2);assert.equal(calls[0].body.revision,1);assert.ok(dialog.textContent.includes('1 of 2 deleted'));assert.ok(dialog.textContent.includes('Submission changed'));
+    mode='pending';const before=calls.length;await act(async()=>{const button=[...dialog.querySelectorAll('button')].find(b=>b.textContent==='Delete selected permanently');button.click();button.click();});assert.equal(calls.length,before+1);
+    mode='partial';await act(async()=>resolveRequest(Response.json({deleted:true,cleanup_pending:false,pending_files:0})));
+  }finally{await app.unmount();}
+});
 await test('lead export preserves search and forms, shows network/auth/file errors, guards double clicks and downloads the XLSX without navigation',async()=>{
   const lead={id:'lead',full_name:'Test Lead',email:'lead@example.test',phone:'+923001234567',phone_country:'PK',country_code:'+92',target_level:'OCS',status:'new',admin_notes:'',created_at:'2026-10-23T00:00:00Z'};
   const calls=[],downloads=[],urls=[],revoked=[];let mode='network',resolveResponse;

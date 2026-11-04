@@ -242,8 +242,9 @@ export function useStudentExamSession(active: boolean, examId = LEGACY_EXAM_ID, 
         setState((current) => ({ ...current, error: "The exam session has not been saved. Please reconnect before submitting." }));
         return false;
       }
+      try {
       const supabase = createClient();
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from("exam_sessions")
         .update({
           status: "completed",
@@ -252,14 +253,27 @@ export function useStudentExamSession(active: boolean, examId = LEGACY_EXAM_ID, 
           updated_at: new Date().toISOString(),
         })
         .eq("id", state.sessionId)
-        .eq("status", "in_progress");
+        .eq("status", "in_progress")
+        .select("id,status").maybeSingle();
 
       if (error) {
         setState((current) => ({ ...current, error: error.message }));
         return false;
       }
+      if (!data) {
+        // A zero-row update is not confirmation of submission. Another tab may
+        // have completed it; verify that case before showing a success screen.
+        const current = await supabase.from("exam_sessions").select("id,status").eq("id", state.sessionId).maybeSingle();
+        if (current.error || current.data?.status !== "completed") throw new Error("Submission could not be confirmed. Your draft is retained; reconnect and retry.");
+      } else if (data.status !== "completed") {
+        throw new Error("Submission could not be confirmed. Please reconnect and retry.");
+      }
       setState((current) => ({ ...current, completed: true, error: null }));
       return true;
+      } catch (error) {
+        setState(current => ({ ...current, error: error instanceof Error ? error.message : "Unable to submit your exam. Please reconnect and retry." }));
+        return false;
+      }
     },
     [state.sessionId],
   );
