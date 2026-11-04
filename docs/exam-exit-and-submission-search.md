@@ -1,11 +1,17 @@
 # Exam exit and submission tools
 
-The active exam's dashboard button opens a confirmation explaining that the
-current question timer continues while the student is away. Cancel keeps the
-attempt open; Save and exit waits for answer persistence and timer sync. Failed
-saves keep the confirmation open for retry. Closing/reloading an active exam also
-requests the browser's native leave warning. Exiting does not submit an attempt,
-pause a question or grant another free trial.
+The active exam's dashboard button opens a confirmation explaining that Submit
+& Exit saves and submits the current answers, closes the attempt and prevents
+resuming/editing it. Stay in Exam keeps the attempt open. Confirmed exit waits for
+answer persistence, timer sync and verified session completion before navigating
+to the dashboard. Failed saves/submissions keep the confirmation open for retry.
+The question timer runs while the student considers the confirmation; time-up
+transitions are blocked during a confirmed exit to prevent racing completion.
+
+Closing/reloading the tab requests the browser's native leave warning. Native
+warnings use browser-controlled wording and do not themselves submit an attempt;
+the explicit Submit & Exit action performs final submission. No unload handler
+finalizes an attempt after a cancelled browser warning or an interrupted request.
 
 Session completion now checks the returned database row. A zero-row update must
 be followed by confirmation that the attempt was already completed by another

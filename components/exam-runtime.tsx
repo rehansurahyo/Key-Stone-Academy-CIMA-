@@ -1603,7 +1603,7 @@ export default function ExamRuntime({
 
   const handleQuestionTimeUp = useCallback(async () => {
     if (examSession.completed) return true;
-    if (submitting || transitioning) return false;
+    if (submitting || transitioning || exiting || exitInFlight.current) return false;
     const answerSaved = await flushCurrentAnswer();
     if (!answerSaved) return false;
 
@@ -1624,6 +1624,7 @@ export default function ExamRuntime({
     flushCurrentAnswer,
     questionIndex,
     sections.length,
+    exiting,
     submitting,
     transitioning,
   ]);
@@ -1641,6 +1642,7 @@ export default function ExamRuntime({
       !examSession.loading &&
       !examSession.completed &&
       (!isTrial || Boolean(examSession.sessionId)) &&
+      !exiting &&
       !submitting &&
       !transitioning,
     onTimeUp: handleQuestionTimeUp,
@@ -1660,10 +1662,13 @@ export default function ExamRuntime({
         return;
       }
       if (flow === "exam") await syncCurrentTimer();
+      if (!(await examSession.completeSession(seconds))) {
+        throw new Error("Your attempt could not be submitted. Your draft is retained; please reconnect and retry.");
+      }
       leavingRef.current = true;
       window.location.assign("/dashboard");
-    } catch {
-      setExitError("Unable to sync your exam progress. Please try again.");
+    } catch (error) {
+      setExitError(error instanceof Error ? error.message : "Unable to submit your attempt. Please reconnect and retry.");
       setExiting(false);
       exitInFlight.current = false;
     }
@@ -2140,14 +2145,14 @@ export default function ExamRuntime({
       <AlertDialog open={confirmExit} onOpenChange={open => { if (!exitInFlight.current) setConfirmExit(open); }}>
         <AlertDialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto">
           <AlertDialogHeader>
-            <AlertDialogTitle>Leave the exam?</AlertDialogTitle>
-            <AlertDialogDescription>Your current question timer keeps running while you are away. You may run out of time before you return. Saving and exiting does not submit your exam.</AlertDialogDescription>
+            <AlertDialogTitle>Submit this attempt and exit?</AlertDialogTitle>
+            <AlertDialogDescription>Leaving now will submit your saved answers and close this attempt. You will not be able to resume or edit it. Choose Stay in Exam to continue working.</AlertDialogDescription>
           </AlertDialogHeader>
-          {isTrial && <p className="text-sm text-slate-600">Your free-trial attempt has already started. Leaving does not give you another attempt.</p>}
+          {isTrial && <p className="text-sm text-slate-600">Your free-trial attempt has already started. Submitting and exiting does not give you another free attempt.</p>}
           {exitError && <p role="alert" className="text-sm text-red-700">{exitError}</p>}
           <AlertDialogFooter>
             <AlertDialogCancel disabled={exiting}>Stay in exam</AlertDialogCancel>
-            <AlertDialogAction disabled={exiting || submitting || transitioning} onClick={event => { event.preventDefault(); void exitToDashboard(); }}>{exiting ? "Saving progress…" : "Save and exit"}</AlertDialogAction>
+            <AlertDialogAction disabled={exiting || submitting || transitioning} onClick={event => { event.preventDefault(); void exitToDashboard(); }}>{exiting ? "Submitting…" : "Submit & Exit"}</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

@@ -12,14 +12,14 @@ globalThis.requestAnimationFrame=browser.requestAnimationFrame.bind(browser);glo
 Object.defineProperty(globalThis,'navigator',{value:browser.navigator,configurable:true});globalThis.IS_REACT_ACT_ENVIRONMENT=true;
 const {createRoot}=await import('../node_modules/react-dom/client.js');
 const auth={user:{id:'local-test-student'},role:'student',candidateName:'Local Test Student',loading:false,error:null,configured:true};
-let completions=0;
+let completions=0,completionCalls=0,completionMode='ok',resolveCompletion;
 const sessionActivations=[];
 const client={auth:{refreshSession:async()=>({error:null})},rpc:async()=>({error:null}),from:()=>({select(){return this;},eq(){return this;},single:async()=>({data:{status:'in_progress',question_timers:{},active_question_id:null},error:null})})};
 const writes=[];globalThis.fetch=async(_url,options)=>{writes.push(JSON.parse(options.body));return new Response('{"saved":true}');};
 const load=loader({'@/hooks/useStudentAuth':{useStudentAuth:()=>auth},'@/hooks/useStudentExamSession':{useStudentExamSession:(active,examId)=>{
   React.useEffect(()=>{if(active)sessionActivations.push(examId);},[active,examId]);
   const [completed,setCompleted]=React.useState(false);
-  return{sessionId:'local-test-session',answers:{},questionTimers:{},completed,loading:false,error:null,completeSession:async()=>{completions++;setCompleted(true);return true;},resetLocalSession:()=>setCompleted(false)};
+  return{sessionId:'local-test-session',answers:{},questionTimers:{},completed,loading:false,error:null,completeSession:async()=>{completionCalls++;if(completionMode==='fail')return false;if(completionMode==='pending')await new Promise(resolve=>{resolveCompletion=resolve;});completions++;setCompleted(true);return true;},resetLocalSession:()=>setCompleted(false)};
 }},'@/lib/supabase/client':{createClient:()=>client,isSupabaseConfigured:true}});
 const {default:ExamRuntime}=load('components/exam-runtime.tsx');
 const {LEGACY_EXAM_ID,questionsData}=load('lib/exam-data.ts');
@@ -132,23 +132,29 @@ await test('two-step section confirmation advances to question 2, refresh restor
   await click([...el.querySelectorAll('footer button')].find(b=>b.textContent.includes('Next')));
   await act(async()=>root.unmount());root=createRoot(el);await render();assert.ok(el.textContent.includes('Question 2 of 3'));assert.ok(el.querySelector('.tiptap'));
 });
-await test('dashboard exit saves drafts and timer without submitting; failed saves keep the attempt open',async()=>{
-  const previousFetch=globalThis.fetch;
+await test('confirmed dashboard exit submits only after saving; cancel, failed saves/timer/completion and double clicks remain safe',async()=>{
+  const previousFetch=globalThis.fetch,previousRpc=client.rpc;
   const editor=el.querySelector('.tiptap');
   await act(async()=>{const p=document.createElement('p');p.textContent='Pending draft before exit';editor.append(p);await new Promise(r=>setTimeout(r,40));});
   globalThis.fetch=async()=>new Response('{"error":"Offline save"}',{status:503});
   await click(button(el,'Exit to Dashboard'));
-  let exitDialog=document.querySelector('[role=alertdialog]');assert.ok(exitDialog.textContent.includes('timer keeps running'));
-  assert.equal(navigations.length,0);await click(button(exitDialog,'Stay in exam'));assert.equal(navigations.length,0);
-  await click(button(el,'Exit to Dashboard'));exitDialog=document.querySelector('[role=alertdialog]');
-  await click(button(exitDialog,'Save and exit'));
-  assert.equal(navigations.length,0);assert.ok(el.textContent.includes('Your latest answer could not be saved'));assert.equal(completions,0);
-  let timerSynced=false;const previousRpc=client.rpc;client.rpc=async()=>{timerSynced=true;return{error:null};};
-  globalThis.fetch=previousFetch;await click(button(document.querySelector('[role=alertdialog]'),'Save and exit'));
-  assert.equal(navigations.at(-1),'/dashboard');assert.ok(timerSynced);assert.equal(completions,0);
-  client.rpc=previousRpc;
-  // Real navigation unmounts the runtime; remount to continue submission scenarios.
-  await act(async()=>root.unmount());root=createRoot(el);await render();
+  let dialog=document.querySelector('[role=alertdialog]');assert.ok(dialog.textContent.includes('will not be able to resume or edit'));
+  assert.equal(navigations.length,0);await click(button(dialog,'Stay in exam'));assert.equal(completionCalls,0);
+  await click(button(el,'Exit to Dashboard'));dialog=document.querySelector('[role=alertdialog]');
+  await click(button(dialog,'Submit & Exit'));
+  assert.equal(navigations.length,0);assert.ok(dialog.textContent.includes('Your latest answer could not be saved'));assert.equal(completionCalls,0);
+  globalThis.fetch=previousFetch;client.rpc=async()=>({error:new Error('Timer connection interrupted')});
+  await click(button(dialog,'Submit & Exit'));assert.equal(navigations.length,0);assert.equal(completionCalls,0);assert.ok(dialog.textContent.includes('Timer connection interrupted'));
+  let timerSynced=false;client.rpc=async()=>{timerSynced=true;return{error:null};};completionMode='fail';
+  await click(button(dialog,'Submit & Exit'));assert.equal(completions,0);assert.equal(navigations.length,0);assert.ok(dialog.textContent.includes('attempt could not be submitted'));
+  completionMode='pending';const before=completionCalls;
+  await act(async()=>{const submit=button(dialog,'Submit & Exit');submit.click();submit.click();await new Promise(resolve=>setTimeout(resolve,10));});
+  assert.equal(completionCalls,before+1);assert.equal(editor.getAttribute('contenteditable'),'false');assert.equal(navigations.length,0);
+  assert.ok(timerSynced);assert.ok(writes.some(write=>write.answerText.includes('Pending draft before exit')));
+  await act(async()=>resolveCompletion());assert.equal(completions,1);assert.equal(navigations.at(-1),'/dashboard');assert.equal(el.querySelector('[contenteditable=true]'),null);
+  client.rpc=previousRpc;completionMode='ok';
+  // Start an independent fixture for the existing manual-submission tests.
+  await act(async()=>root.unmount());completions=0;completionCalls=0;root=createRoot(el);await render();
 });
 await test('manual submission requires confirmation, completes session and removes editable exam',async()=>{
   await click([...el.querySelectorAll('footer button')].find(b=>b.textContent.includes('Finish')));let dialog=document.querySelector('[role=alertdialog]');assert.ok(dialog);assert.equal(completions,0);
