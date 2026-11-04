@@ -54,6 +54,7 @@ export type Submission = {
   exam_id: string;
   status: "submitted" | "graded";
   score: number | null;
+  score_max?: number;
   feedback: string;
   submitted_at: string;
   graded_at: string | null;

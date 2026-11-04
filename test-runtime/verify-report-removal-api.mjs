@@ -1,0 +1,28 @@
+import assert from 'node:assert/strict';
+import {loader} from './component-loader.mjs';
+const id='00000000-0000-4000-8000-000000007801',reportId='00000000-0000-4000-8000-000000007802';
+let role='tutor',active=true,signedIn=true,rpcError=null,storageError=null,ackError=null,ackPending=false,path=`tutor/${id}/wrong.pdf`;
+const removed=[],rpcCalls=[];
+const supabase={auth:{getUser:async()=>({data:{user:signedIn?{id:'staff'}:null},error:null})},from(){return{select(){return this;},eq(){return this;},single:async()=>({data:{role,is_active:active},error:null})};},async rpc(name,args){rpcCalls.push({name,args});if(name==='save_tutor_evaluation')return{data:{id:'evaluation'},error:rpcError};return name==='remove_submission_report'?{data:{storage_path:path,cleanup_pending:true},error:rpcError}:{data:ackPending,error:ackError};}};
+const load=loader({'server-only':{},'next/navigation':{redirect(){throw Error('Unexpected redirect');}},'@/lib/supabase/server':{createClient:async()=>supabase},'@/lib/supabase/admin':{createAdminClient:async()=>({storage:{from(bucket){assert.equal(bucket,'graded-reports');return{remove:async paths=>{removed.push(paths);return{error:storageError};}};}}})}});
+const {DELETE}=load('app/api/dashboard/submissions/[id]/reports/[reportId]/route.ts');
+const context={params:Promise.resolve({id,reportId})};
+const request=(body={confirmation:'DELETE'},origin='http://localhost:3001')=>new Request('http://localhost:3001/api/dashboard/submissions/'+id+'/reports/'+reportId,{method:'DELETE',headers:{Origin:origin,'Content-Type':'application/json'},body:JSON.stringify(body)});
+for(const staffRole of ['tutor','admin']){role=staffRole;const response=await DELETE(request(),context);assert.equal(response.status,200);assert.deepEqual(await response.json(),{deleted:true,cleanup_pending:false});assert.equal(response.headers.get('cache-control'),'private, no-store');assert.deepEqual(removed.at(-1),[`tutor/${id}/wrong.pdf`]);}
+const calls=rpcCalls.length;role='student';assert.equal((await DELETE(request(),context)).status,403);role='tutor';active=false;assert.equal((await DELETE(request(),context)).status,403);active=true;signedIn=false;assert.equal((await DELETE(request(),context)).status,401);signedIn=true;
+assert.equal((await DELETE(request({},'https://untrusted.example'),context)).status,403);assert.equal((await DELETE(request({confirmation:'DELETE',storage_path:'another/file'}),context)).status,400);assert.equal(rpcCalls.length,calls);
+storageError={message:'offline'};assert.deepEqual(await (await DELETE(request(),context)).json(),{deleted:true,cleanup_pending:true});storageError=null;
+ackError={message:'interrupted'};assert.equal((await (await DELETE(request(),context)).json()).cleanup_pending,true);ackError=null;
+ackPending=true;assert.equal((await (await DELETE(request(),context)).json()).cleanup_pending,true);ackPending=false;
+const before=removed.length;path='some-other-submission/file.pdf';assert.equal((await DELETE(request(),context)).status,503);assert.equal(removed.length,before);path=`tutor/${id}/wrong.pdf`;
+for(const [code,status] of [['PGRST202',503],['42501',403],['P0002',404],['40001',409]]){rpcError={code};assert.equal((await DELETE(request(),context)).status,status);}rpcError=null;
+console.log('PASS: report deletion is staff-only, same-origin, strictly confirmed, server-path scoped and retryable after partial storage cleanup');
+const {PATCH}=load('app/api/dashboard/submissions/[id]/route.ts');
+const grade=body=>new Request('http://localhost:3001/api/dashboard/submissions/'+id,{method:'PATCH',headers:{Origin:'http://localhost:3001','Content-Type':'application/json'},body:JSON.stringify(body)});
+const body={score:140,score_max:150,feedback:'Synthetic feedback',status:'published',revision:0};
+assert.equal((await PATCH(grade(body),context)).status,200);assert.equal(rpcCalls.at(-1).args.p_score_max,150);
+assert.equal((await PATCH(grade({...body,score_max:100}),context)).status,400);
+assert.equal((await PATCH(grade({...body,score:151}),context)).status,400);
+assert.equal((await PATCH(grade({...body,score_max:125}),context)).status,400);
+assert.equal((await PATCH(grade({score:70,feedback:'Legacy',status:'draft',revision:0}),context)).status,200);assert.equal(rpcCalls.at(-1).args.p_score_max,100);
+console.log('PASS: grading API forwards the selected scale, rejects invalid scores and keeps legacy requests on /100');

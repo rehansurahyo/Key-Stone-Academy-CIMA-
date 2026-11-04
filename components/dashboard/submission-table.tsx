@@ -9,6 +9,7 @@ import type { Submission } from "@/lib/dashboard/types";
 import { DeleteSubmissionButton } from "./delete-submission-button";
 import { TrialBadge } from "./trial-badge";
 import { BulkDeleteSubmissions } from "./bulk-delete-submissions";
+import { gradingScale } from "@/lib/grading-scale";
 
 export function SubmissionTable({ submissions, canDelete = false }: { submissions: Submission[]; canDelete?: boolean }) {
   const [deleted, setDeleted] = useState<string[]>([]);
@@ -42,7 +43,7 @@ export function SubmissionTable({ submissions, canDelete = false }: { submission
                 <TableCell className="min-w-48 max-w-sm whitespace-normal leading-relaxed text-slate-700">{s.exam?.name ?? "Mock exam"}</TableCell>
                 <TableCell className="text-xs text-slate-500">{new Date(s.submitted_at).toLocaleDateString("en-GB", { timeZone: "Asia/Karachi", day: "2-digit", month: "short", year: "numeric" })}</TableCell>
                 <TableCell><StatusBadge status={s.status} /></TableCell>
-                <TableCell className="font-semibold tabular-nums text-slate-700">{s.score === null ? "—" : `${s.score}/100`}</TableCell>
+                <TableCell className="font-semibold tabular-nums text-slate-700">{s.score === null ? "—" : `${s.score}/${gradingScale(s)}`}</TableCell>
                 <TableCell className="pr-5 text-right"><div className="flex flex-wrap items-center justify-end gap-2"><Link href={`/dashboard/submissions/${s.id}`} className="inline-flex items-center gap-1.5 rounded-md px-2 py-1.5 text-xs font-semibold text-blue-700 transition hover:bg-blue-50 focus-visible:outline-2 focus-visible:outline-blue-600">{s.status === "graded" ? "View grade" : "Review answers"}<ArrowUpRight className="size-3.5" /></Link>{canDelete && <DeleteSubmissionButton submission={s} onDeleted={() => setDeleted(previous => [...previous, s.id])} />}</div></TableCell>
               </TableRow>
             );

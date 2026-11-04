@@ -2,7 +2,7 @@ import type { ExamLevel } from "./exam-levels";
 import { canUseExam, type StudentAccess } from "./exam-access";
 export type StudentMock = { id: string; name: string; description: string; level: ExamLevel; status?: string };
 export type MockAttempt = { id: string; exam_id: string; status: "not_started" | "in_progress" | "completed"; exam: StudentMock | null };
-export type MockSubmission = { id: string; exam_id: string; status: string; score: number | null; feedback: string; exam: StudentMock | null };
+export type MockSubmission = { id: string; exam_id: string; status: string; score: number | null; score_max?: number; feedback: string; exam: StudentMock | null };
 
 // Prefer unfinished work over historical completions. Never invent papers.
 export function studentMockCards(exams: StudentMock[], attempts: MockAttempt[], submissions: MockSubmission[], access?: StudentAccess) {

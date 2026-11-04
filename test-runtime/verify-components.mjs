@@ -25,6 +25,8 @@ const {ExamTaskList}=load('components/exam-task-list.tsx');
 const {GradingForm}=load('components/dashboard/grading-form.tsx');
 const {SubmissionTable}=load('components/dashboard/submission-table.tsx');
 const {BulkDeleteSubmissions}=load('components/dashboard/bulk-delete-submissions.tsx');
+const {DeleteReportButton,ReportRemovalCleanup}=load('components/dashboard/delete-report-button.tsx');
+const {MaterialFileInput}=load('components/dashboard/material-file-input.tsx');
 const {LeadsTable}=load('components/dashboard/leads-table.tsx');
 const {SubmissionCleanupQueue}=load('components/dashboard/delete-submission-button.tsx');
 const {default:StaffLogin}=load('app/staff/login/page.tsx');
@@ -52,6 +54,32 @@ await test('bulk deletion cancels safely, rejects double clicks and reports part
     mode='pending';const before=calls.length;await act(async()=>{const button=[...dialog.querySelectorAll('button')].find(b=>b.textContent==='Delete selected permanently');button.click();button.click();});assert.equal(calls.length,before+1);
     mode='partial';await act(async()=>resolveRequest(Response.json({deleted:true,cleanup_pending:false,pending_files:0})));
   }finally{await app.unmount();}
+});
+await test('report deletion confirms the filename, preserves other reports, shows failures and retries pending file cleanup',async()=>{
+  let calls=0,removed=0,mode='failed',resolveRequest;
+  globalThis.fetch=async()=>{calls++;if(mode==='pending')return new Promise(resolve=>{resolveRequest=resolve;});return mode==='failed'?Response.json({error:'Temporary failure'},{status:503}):Response.json({deleted:true,cleanup_pending:mode==='cleanup'});};
+  const app=await mount(DeleteReportButton,{submissionId:'submission',reportId:'report',name:'wrong.pdf',onDeleted:()=>removed++});
+  try{
+    await click(app.el.querySelector('button'));let dialog=document.querySelector('[role=alertdialog]');assert.ok(dialog.textContent.includes('wrong.pdf'));await click([...dialog.querySelectorAll('button')].find(b=>b.textContent==='Cancel'));assert.equal(calls,0);
+    await click(app.el.querySelector('button'));dialog=document.querySelector('[role=alertdialog]');await click([...dialog.querySelectorAll('button')].find(b=>b.textContent==='Delete report permanently'));assert.equal(removed,0);assert.ok(dialog.textContent.includes('Temporary failure'));
+    mode='pending';await act(async()=>{const button=[...dialog.querySelectorAll('button')].find(b=>b.textContent==='Delete report permanently');button.click();button.click();});assert.equal(calls,2);
+    await act(async()=>resolveRequest(Response.json({deleted:true,cleanup_pending:true})));assert.equal(removed,1);
+  }finally{await app.unmount();}
+  mode='cleanup';const queue=await mount(ReportRemovalCleanup,{jobs:[{submission_id:'submission',report_id:'report',file_name:'wrong.pdf'}]});
+  try{await click(queue.el.querySelector('button'));assert.ok(queue.el.textContent.includes('still pending'));mode='ok';await click(queue.el.querySelector('button'));assert.equal(queue.el.querySelector('section'),null);}finally{await queue.unmount();}
+});
+await test('new grading defaults to 150 and records its scale; historical grades keep 100 until explicitly changed',async()=>{
+  const calls=[];globalThis.fetch=async(_url,options)=>{calls.push(JSON.parse(options.body));return Response.json({});};
+  let app=await mount(GradingForm,{submission:{id:'scale',score:null,feedback:''},evaluation:null});
+  try{assert.equal(label(app.el,'Overall score').max,'150');await change(label(app.el,'Overall score'),'140');await change(label(app.el,'Tutor feedback'),'Strong answer');await submit(app.el.querySelector('form'));assert.equal(calls.at(-1).score,140);assert.equal(calls.at(-1).score_max,150);}finally{await app.unmount();}
+  app=await mount(GradingForm,{submission:{id:'old',score:70,score_max:100,feedback:'Original'},evaluation:{score:70,status:'published',revision:2,feedback:'Original',score_max:100}});
+  try{assert.equal(label(app.el,'Overall score').max,'100');await change(app.el.querySelector('select'),'150');assert.equal(label(app.el,'Overall score').max,'150');}finally{await app.unmount();}
+  app=await mount(SubmissionTable,{submissions:[{id:'scale',score:140,score_max:150,status:'graded',submitted_at:'2026-11-04',student:{full_name:'Scale QA'},exam:{name:'Mock'}}]});
+  try{assert.ok(app.el.textContent.includes('140/150'));}finally{await app.unmount();}
+});
+await test('wrong selected material can be cleared before upload without removing an existing server file',async()=>{
+  let selected;function Harness(){const[file,setFile]=React.useState(null);selected=file;return React.createElement(MaterialFileInput,{label:'Reference QA',accept:'.pdf',file,onChange:setFile});}
+  const app=await mount(Harness,{});try{const input=app.el.querySelector('input');Object.defineProperty(input,'files',{value:[new File(['PDF'],'wrong.pdf',{type:'application/pdf'})],configurable:true});await act(async()=>input.dispatchEvent(new Event('change',{bubbles:true})));assert.equal(selected.name,'wrong.pdf');await click(app.el.querySelector('button'));assert.equal(selected,null);assert.equal(input.value,'');assert.equal(app.el.querySelector('button'),null);}finally{await app.unmount();}
 });
 await test('lead export preserves search and forms, shows network/auth/file errors, guards double clicks and downloads the XLSX without navigation',async()=>{
   const lead={id:'lead',full_name:'Test Lead',email:'lead@example.test',phone:'+923001234567',phone_country:'PK',country_code:'+92',target_level:'OCS',status:'new',admin_notes:'',created_at:'2026-10-23T00:00:00Z'};
@@ -354,7 +382,7 @@ await test('PDF uploads preserve material mappings; invalid PDF rejects; failed 
 const submission={id:'submission-test',revision:0,status:'submitted',score:null,feedback:'',submitted_at:new Date().toISOString(),student:{full_name:'Test Student',email:'test@example.invalid'},exam:{name:'Mock test'}};
 await test('grading form sends score, feedback and revision; stale grade exposes server error',async()=>{
   let payload;globalThis.fetch=async(_url,options)=>{payload=JSON.parse(options.body);return new Response('{}');};
-  const app=await mount(GradingForm,{submission,evaluation:null});try{await change(app.el.querySelector('[name=score]'),'72.5');await change(app.el.querySelector('[name=feedback]'),'Strong analysis.');await submit(app.el.querySelector('form'));assert.deepEqual(payload,{score:72.5,feedback:'Strong analysis.',status:'published',revision:0});assert.ok(app.el.textContent.includes('Evaluation saved.'));}finally{await app.unmount();}
+  const app=await mount(GradingForm,{submission,evaluation:null});try{await change(app.el.querySelector('[name=score]'),'72.5');await change(app.el.querySelector('[name=feedback]'),'Strong analysis.');await submit(app.el.querySelector('form'));assert.deepEqual(payload,{score:72.5,score_max:150,feedback:'Strong analysis.',status:'published',revision:0});assert.ok(app.el.textContent.includes('Evaluation saved.'));}finally{await app.unmount();}
   globalThis.fetch=async()=>new Response('{"error":"Reload before saving."}',{status:409});
   const failed=await mount(GradingForm,{submission,evaluation:null});try{await submit(failed.el.querySelector('form'));assert.equal(failed.el.querySelector('[role=alert]').textContent,'Reload before saving.');assert.equal(failed.el.querySelector('button').disabled,false);}finally{await failed.unmount();}
 });

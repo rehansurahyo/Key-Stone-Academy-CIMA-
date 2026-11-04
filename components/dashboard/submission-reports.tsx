@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 import { MAX_REPORT_BYTES, REPORT_ACCEPT, REPORT_BUCKET, reportMime } from "@/lib/report-files";
 import type { SubmissionReport } from "@/lib/dashboard/types";
 import { inputClass, Notice, primaryClass, secondaryClass } from "./shared";
+import { DeleteReportButton } from "./delete-report-button";
 
 export function SubmissionReports({ submissionId, reports }: { submissionId: string; reports: SubmissionReport[] }) {
   const [file, setFile] = useState<File | null>(null);
@@ -15,9 +16,10 @@ export function SubmissionReports({ submissionId, reports }: { submissionId: str
   const input = useRef<HTMLInputElement>(null);
   const pendingUpload = useRef<{ file: File; path: string; userId: string } | null>(null);
   const [addedReports, setAddedReports] = useState<SubmissionReport[]>([]);
-  const visibleReports = [...new Map([...reports, ...addedReports].map(report => [report.id, report])).values()];
+  const [removedReports, setRemovedReports] = useState<string[]>([]);
+  const visibleReports = [...new Map([...reports, ...addedReports].map(report => [report.id, report])).values()].filter(report => !removedReports.includes(report.id));
   return <section className="my-7 rounded-xl border border-slate-200 bg-white p-6"><h2 className="mb-2 flex items-center gap-2 text-lg font-semibold text-[#0B2545]"><FileText className="size-5 text-blue-600" />Graded reports</h2><p className="mb-5 text-sm text-slate-500">Attach marked papers or feedback documents. Students can download them after you publish their grade. PDF or Word (.docx, .doc), up to 20 MB each.</p>
-    <div className="mb-5 flex flex-wrap gap-2">{visibleReports.map(report => <a className={secondaryClass} key={report.id} href={`/api/reports/${report.id}`}>{report.file_name}</a>)}</div>
+    <div className="mb-5 flex flex-wrap gap-2">{visibleReports.map(report => <div key={report.id} className="flex flex-wrap items-center gap-2"><a className={secondaryClass} href={`/api/reports/${report.id}`}>{report.file_name}</a><DeleteReportButton submissionId={submissionId} reportId={report.id} name={report.file_name} onDeleted={() => setRemovedReports(current => [...current, report.id])} /></div>)}</div>
     <form onSubmit={async event => {
       event.preventDefault(); if (!file || busy) return;
       setBusy(true); setError(""); setSaved(false);

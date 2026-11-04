@@ -97,5 +97,25 @@ assert.equal(count.rows[0].n,0,'All RBAC fixtures rolled back');
 assert.equal((await db.query('select count(*)::integer n from public.exam_questions')).rows[0].n,3);
 assert.equal((await db.query("select count(*)::integer n from public.exam_questions where jsonb_array_length(content->'subtasks')=2 and public.valid_question_subtasks(content)")).rows[0].n,3,'Legacy questions backfilled without losing data');
 console.log('PASS: rollback leaves no test users; original three questions preserved');
+// Seed a historical /100 grade before installing the new schema, so preserving
+// its denominator is tested against real persisted rows rather than a mock.
+await db.exec(`
+  insert into auth.users(id,email) values('00000000-0000-4000-8000-000000007101','tutor-scale@example.invalid'),('00000000-0000-4000-8000-000000007102','student-scale@example.invalid');
+  update public.profiles set role='tutor' where id='00000000-0000-4000-8000-000000007101';
+  update public.profiles set assigned_level='SCS',access_type='enrolled' where id='00000000-0000-4000-8000-000000007102';
+  select set_config('request.jwt.claim.role','authenticated',false);
+  select set_config('request.jwt.claim.sub','00000000-0000-4000-8000-000000007101',false);
+  select public.create_mock_exam_with_level('00000000-0000-4000-8000-000000007201','Scale QA','','published','[{"question_id":"section-1","position":1,"duration_seconds":3600,"content":{"subject":"Scale QA","subtasks":[{"description":"Assess","weightage":100}]}}]'::jsonb,'[]'::jsonb,'SCS');
+  select set_config('request.jwt.claim.sub','00000000-0000-4000-8000-000000007102',false);
+  insert into public.exam_sessions(id,user_id,exam_id,status) values('00000000-0000-4000-8000-000000007301','00000000-0000-4000-8000-000000007102','00000000-0000-4000-8000-000000007201','in_progress');
+  insert into public.exam_answers(session_id,question_id,answer_text) values('00000000-0000-4000-8000-000000007301','section-1','Retained answer');
+  update public.exam_sessions set status='completed',ended_at=now() where id='00000000-0000-4000-8000-000000007301';
+  select set_config('request.jwt.claim.sub','00000000-0000-4000-8000-000000007101',false);
+  select public.save_tutor_evaluation((select id from public.submissions where session_id='00000000-0000-4000-8000-000000007301'),70,'Historical grade','published',0);
+`);
+const scaleMigration=await readFile(new URL('../supabase/migrations/20261104_grading_scale_and_report_removal.sql',import.meta.url),'utf8');
+await db.exec(scaleMigration);await db.exec(scaleMigration);
+await db.exec(await readFile(new URL('../supabase/tests/grading_scale_report_removal.sql',import.meta.url),'utf8'));
+console.log('PASS: 150-mark grades, preserved historical scales, legacy clients, report unlink/outbox/retry, no resurrection and student denial');
 await db.close();
 }

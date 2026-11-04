@@ -15,7 +15,7 @@ export default async function StudentDashboard({ searchParams }: { searchParams:
   const level = parseExamLevel(query.level);
   const [exams, submissions, attempts, reports, solutions] = await Promise.all([
     supabase.from("exams").select("id,name,description,level,status").eq("status", "published").eq("level", assignedLevel).order("created_at", { ascending: false }).limit(1000),
-    supabase.from("submissions").select("id,exam_id,status,score,feedback,submitted_at,exam:exams(id,name,description,level,status)").eq("student_id", user.id).order("submitted_at", { ascending: false }).limit(1000),
+    supabase.from("submissions").select("id,exam_id,status,score,score_max,feedback,submitted_at,exam:exams(id,name,description,level,status)").eq("student_id", user.id).order("submitted_at", { ascending: false }).limit(1000),
     supabase.from("exam_sessions").select("id,exam_id,status,exam:exams(id,name,description,level,status)").eq("user_id", user.id).order("updated_at", { ascending: false }).limit(1000),
     supabase.from("submission_reports").select("id,submission_id,file_name,created_at").order("created_at", { ascending: false }).limit(1000),
     // RLS releases solution rows only after this student has submitted that exam.

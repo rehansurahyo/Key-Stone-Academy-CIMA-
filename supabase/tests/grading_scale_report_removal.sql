@@ -1,0 +1,37 @@
+begin;
+select set_config('request.jwt.claim.sub','00000000-0000-4000-8000-000000007101',true);
+select set_config('request.jwt.claim.role','authenticated',true);
+set local role authenticated;
+do $$ declare sid uuid; revision integer; rid uuid; path text; result jsonb;
+begin
+  select id into sid from public.submissions where session_id='00000000-0000-4000-8000-000000007301';
+  if not exists(select 1 from public.submissions where id=sid and score=70 and score_max=100) then raise exception 'Historical grade scale changed'; end if;
+  select e.revision into revision from public.tutor_evaluations e where submission_id=sid;
+  result:=public.save_tutor_evaluation(sid,140,'Marked out of 150','published',revision,150);
+  if not exists(select 1 from public.submissions where id=sid and score=140 and score_max=150) then raise exception '150 scale did not publish'; end if;
+  begin perform public.save_tutor_evaluation(sid,151,'Invalid','published',(result->>'revision')::integer,150); raise exception 'FAIL: out-of-range grade accepted'; exception when check_violation then null; end;
+  begin perform public.save_tutor_evaluation(sid,100,'Invalid','published',(result->>'revision')::integer,125); raise exception 'FAIL: unsupported scale accepted'; exception when check_violation then null; end;
+  begin perform public.save_tutor_evaluation(sid,100,'Stale','published',999,150); raise exception 'FAIL: stale grade accepted'; exception when serialization_failure then null; end;
+  perform public.save_tutor_evaluation(sid,65,'Legacy client','published',(result->>'revision')::integer);
+  if not exists(select 1 from public.submissions where id=sid and score=65 and score_max=100) then raise exception 'Legacy client grade mislabelled'; end if;
+  path:=auth.uid()::text||'/'||sid::text||'/wrong.pdf';
+  insert into storage.objects(bucket_id,name) values('graded-reports',path);
+  rid:=public.attach_submission_report(sid,path,'wrong.pdf','application/pdf',1000);
+  result:=public.remove_submission_report(sid,rid);
+  if exists(select 1 from public.submission_reports where id=rid) then raise exception 'Report not unlinked'; end if;
+  if not public.ack_report_removal(rid) then raise exception 'Cleanup acknowledged while object exists'; end if;
+  if (public.remove_submission_report(sid,rid)->>'storage_path')<>path then raise exception 'Retry lost cleanup path'; end if;
+  begin perform public.attach_submission_report(sid,path,'wrong.pdf','application/pdf',1000); raise exception 'FAIL: removed path reattached'; exception when insufficient_privilege then null; end;
+  begin perform public.remove_submission_report('00000000-0000-4000-8000-000000009999',rid); raise exception 'FAIL: wrong submission accepted'; exception when no_data_found then null; end;
+  delete from storage.objects where bucket_id='graded-reports' and name=path;
+  if public.ack_report_removal(rid) then raise exception 'Cleanup stayed pending after object removal'; end if;
+  if not exists(select 1 from public.exam_answers where session_id='00000000-0000-4000-8000-000000007301') then raise exception 'Student answer lost'; end if;
+  if not exists(select 1 from public.submissions where id=sid and score=65) then raise exception 'Grade lost during report removal'; end if;
+end; $$;
+select set_config('request.jwt.claim.sub','00000000-0000-4000-8000-000000007102',true);
+do $$ begin
+  if exists(select 1 from public.report_deletions) then raise exception 'Student can read report deletion audit'; end if;
+  begin perform public.remove_submission_report('00000000-0000-4000-8000-000000007301','00000000-0000-4000-8000-000000007302'); raise exception 'FAIL: student removed report'; exception when insufficient_privilege then null; end;
+  begin perform public.save_tutor_evaluation('00000000-0000-4000-8000-000000007301',140,'Bad','published',0,150); raise exception 'FAIL: student graded'; exception when insufficient_privilege then null; end;
+end; $$;
+rollback;

@@ -41,11 +41,12 @@ export const mockStatusSchema = z.union([
 ]);
 export const removeMockSchema = z.object({ revision: z.number().int().min(0) }).strict();
 export const gradeSchema = z.object({
-  score: z.number().min(0).max(100),
+  score: z.number().min(0).max(150),
+  score_max: z.union([z.literal(100), z.literal(150)]).default(100),
   feedback: z.string().trim().min(1).max(20_000),
   status: z.enum(["draft", "published"]),
   revision: z.number().int().min(0),
-});
+}).refine(value => value.score <= value.score_max, { message: "Score cannot exceed the marking scale.", path: ["score"] });
 export const newUserSchema = z.object({
   email: z.string().email().max(254),
   full_name: z.string().trim().min(1).max(150),
