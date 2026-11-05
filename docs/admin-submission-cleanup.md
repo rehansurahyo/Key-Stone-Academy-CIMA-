@@ -1,16 +1,17 @@
-# Admin submission deletion
+# Submission deletion for admins and tutors
 
 ## Enable
 
 1. Run `supabase/migrations/20261021_admin_submission_deletion.sql` in the production Supabase SQL Editor after the existing trial/report migrations. Installing it deletes no existing data. It can be rerun safely.
-2. Deploy the corresponding application code. No new environment variables are needed. Report file removal uses the existing server-only `SUPABASE_SERVICE_ROLE_KEY` and Supabase URL, including Cloudflare runtime bindings.
-3. Sign in as an active admin and open **Answer grading**. Tutors and students have no delete permission, including when calling the API or SQL RPC directly.
+2. Run `supabase/migrations/20261106_tutor_submission_deletion.sql` after the 20261104 grading/report-removal migration to enable active tutors too. This only changes permissions and installs a capability check; it deletes no existing data.
+3. Deploy the corresponding application code. No new environment variables are needed. Report file removal uses the existing server-only `SUPABASE_SERVICE_ROLE_KEY` and Supabase URL, including Cloudflare runtime bindings.
+4. Sign in as an active admin or tutor and open **Answer grading**. Both roles can delete individual or selected submissions and retry file cleanup. Students, anonymous users and inactive staff are denied by both API authorization and database RPCs. Tutor controls stay hidden until the database capability is ready; existing admin deletion remains available during rollout.
 
 ## Use
 
 - Select **Delete** on one submission, verify the student and exam, download anything important, then type **DELETE** and confirm.
 - This permanently deletes **that completed attempt**, its answers, submission, evaluation and linked report files. It is not an archive or an undoable action. The student's account, enrollment/trial grant, lead entry, other attempts and all shared mock/reference/solution PDFs remain unchanged.
-- Removing an attempt does not revoke exam access; the student can start again if their current access permits. Existing copies downloaded by users cannot be recalled.
+- Removing an attempt does not revoke exam access; the student can start again if their current access permits. A used free-trial receipt survives deletion, so cleanup does not grant a second free attempt. Existing copies downloaded by users cannot be recalled.
 - Concurrent grading/attachments or a changed submission revision can return a conflict. Reload, review the current record and confirm again rather than silently discarding newer work.
 
 ## File cleanup and recovery

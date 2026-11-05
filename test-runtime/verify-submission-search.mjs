@@ -3,7 +3,7 @@ import React from '../node_modules/react/index.js';
 import {renderToStaticMarkup} from '../node_modules/react-dom/server.node.js';
 import {loader} from './component-loader.mjs';
 const calls=[];let failure=null;
-const client={from(table){const query={table};calls.push(query);return{select(value){query.select=value;return this;},eq(key,value){(query.equal??=[]).push([key,value]);return this;},ilike(key,value){query.search=[key,value];return this;},order(){return this;},limit(){return this;},range(first,last){query.range=[first,last];return this;},then(resolve){return Promise.resolve({data:[],count:45,error:failure}).then(resolve);}};}};
+const client={rpc:async()=>({data:true,error:null}),from(table){const query={table};calls.push(query);return{select(value){query.select=value;return this;},eq(key,value){(query.equal??=[]).push([key,value]);return this;},ilike(key,value){query.search=[key,value];return this;},neq(){return this;},order(){return this;},limit(){return this;},range(first,last){query.range=[first,last];return this;},then(resolve){return Promise.resolve({data:[],count:45,error:failure}).then(resolve);}};}};
 const load=loader({'next/navigation':{useRouter:()=>({refresh(){}})},'next/link':{__esModule:true,default:({href,children,...props})=>React.createElement('a',{href,...props},children)},'@/lib/dashboard/auth':{requireStaffPage:async()=>({supabase:client,profile:{role:'tutor'}})}});
 const Page=load('app/dashboard/submissions/page.tsx').default;
 const html=renderToStaticMarkup(await Page({searchParams:Promise.resolve({q:'  Josh & Sons  ',status:'graded',level:'OCS',page:'2'})}));

@@ -22,7 +22,7 @@ level and search persist in filter and pagination links; a new search starts at
 page one. Literal `%`/`_` characters do not broaden the search.
 
 Admins can select individual submissions or the current page and delete those
-selected after typing DELETE. The existing revision-checked admin-only endpoint
+selected after typing DELETE. The existing revision-checked staff endpoint (admins and tutors after the 20261106 migration)
 is reused sequentially. A failed request stops the batch, shows the partial
 outcome and retains failed selections. Storage cleanup keeps its existing durable
 retry queue. Tutors have search/review access without deletion controls.

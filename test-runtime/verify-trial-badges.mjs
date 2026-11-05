@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict';
 import {loader} from './component-loader.mjs';
 
-let accessType='trial',role='admin';
+let accessType='trial',role='admin',deletionReady=true;
 const queries=[];
 const fixture=columns=>({id:'submission',session_id:'session',exam_id:'exam',submitted_at:'2026-10-21T00:00:00Z',status:'submitted',revision:0,score:null,student:{full_name:'Student',email:'same-contact@example.test',...(columns.includes('access_type')?{access_type:accessType}:{})},exam:{name:'Mock 1'}});
-const client={from(table){let columns='';return {
+const client={rpc:async()=>({data:deletionReady,error:null}),from(table){let columns='';return {
   select(value){columns=value;queries.push({table,columns});return this;},eq(){return this;},neq(){return this;},order(){return this;},limit(){return this;},range(){return this;},
   async maybeSingle(){return {data:table==='submissions'?fixture(columns):null,error:null};},
   then(resolve){return Promise.resolve({data:table==='submissions'?[fixture(columns)]:[],count:table==='submissions'?1:0,error:null}).then(resolve);},
@@ -19,6 +19,7 @@ const load=loader({'server-only':{},
 const List=load('app/dashboard/submissions/page.tsx').default;
 const Overview=load('app/dashboard/page.tsx').default;
 const Review=load('app/dashboard/submissions/[id]/page.tsx').default;
+const {DeleteSubmissionButton}=load('components/dashboard/delete-submission-button.tsx');
 function find(element,type){
   if(!element||typeof element!=='object')return;
   if(element.type===type)return element;
@@ -36,6 +37,9 @@ for(const staffRole of ['admin','tutor'])for(const type of ['trial','enrolled'])
   }
   const review=await Review({params:Promise.resolve({id:'submission'})});
   assert.equal(find(review,Badge).props.accessType,type,'Review header receives the same authoritative account status');
+  assert.equal(find(review,DeleteSubmissionButton).props.redirectAfterDelete,true,'Active admin/tutor can delete from the review header');
 }
+deletionReady=false;const unavailable=await Review({params:Promise.resolve({id:'submission'})});assert.equal(find(unavailable,DeleteSubmissionButton),undefined,'Missing DB capability hides review deletion');
 assert.ok(queries.filter(query=>query.table==='submissions'&&query.columns.includes('student:profiles')).every(query=>query.columns.includes('full_name,email,access_type')));
 console.log('PASS: grading list, recent submissions and review fetch profile access_type for both admin and tutor; identical contact emails never determine trial status');
+console.log('PASS: review header enables confirmed admin/tutor deletion only when the database capability is ready');

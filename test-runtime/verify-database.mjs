@@ -117,5 +117,12 @@ const scaleMigration=await readFile(new URL('../supabase/migrations/20261104_gra
 await db.exec(scaleMigration);await db.exec(scaleMigration);
 await db.exec(await readFile(new URL('../supabase/tests/grading_scale_report_removal.sql',import.meta.url),'utf8'));
 console.log('PASS: 150-mark grades, preserved historical scales, legacy clients, report unlink/outbox/retry, no resurrection and student denial');
+const tutorDeletion=await readFile(new URL('../supabase/migrations/20261106_tutor_submission_deletion.sql',import.meta.url),'utf8');
+const beforeTutorMigration=await db.query('select (select count(*) from public.exam_sessions) sessions,(select count(*) from public.exam_answers) answers,(select count(*) from public.submissions) submissions');
+await db.exec(tutorDeletion);await db.exec(tutorDeletion);
+assert.deepEqual((await db.query('select (select count(*) from public.exam_sessions) sessions,(select count(*) from public.exam_answers) answers,(select count(*) from public.submissions) submissions')).rows,beforeTutorMigration.rows,'Installing tutor permissions never deletes historical work');
+assert.equal((await db.query("select has_function_privilege('anon','public.can_delete_exam_submissions()','execute') permitted")).rows[0].permitted,false);
+await db.exec(await readFile(new URL('../supabase/tests/tutor_submission_deletion.sql',import.meta.url),'utf8'));
+console.log('PASS: tutor deletion SQL: active tutor permission, inactive/student denial, stale and unfinished protection, scoped cascades, audit ownership, admin cleanup and retained historical work');
 await db.close();
 }

@@ -28,7 +28,7 @@ function send(body=payload(),options={}){
     method:'DELETE',headers:{Origin:options.origin??'https://portal.example.test','Content-Type':'application/json'},body:typeof body==='string'?body:JSON.stringify(body),
   }),{params:Promise.resolve({id:options.id||id})});
 }
-for(const [r,a,expected] of [['student',true,403],['tutor',true,403],['admin',false,403]]){
+for(const [r,a,expected] of [['student',true,403],['tutor',false,403],['admin',false,403]]){
   role=r;active=a;assert.equal((await send()).status,expected);
 }
 role='admin';active=true;signedIn=false;assert.equal((await send()).status,401);signedIn=true;
@@ -55,11 +55,12 @@ assert.equal((await (await send()).json()).cleanup_pending,true);assert.equal(re
 paths=Array.from({length:201},(_,i)=>`tutor/${id}/${i}.pdf`);
 assert.equal((await (await send()).json()).cleanup_pending,false);assert.deepEqual(removed.slice(-3).map(batch=>batch.length),[100,100,1]);
 assert.ok(removed.flat().every(path=>path.split('/')[1]===id));
-console.log('PASS: deletion API: active admin + same-origin only, strict confirmation/UUID/revision, safe errors, scoped Storage bucket/paths, partial cleanup and idempotent batched retries');
+role='tutor';paths=[path];response=await send();assert.equal(response.status,200);assert.equal((await response.json()).cleanup_pending,false);assert.deepEqual(removed.at(-1),[path]);
+console.log('PASS: deletion API: active admin/tutor + same-origin only, strict confirmation/UUID/revision, safe errors, scoped Storage bucket/paths, partial cleanup and idempotent batched retries');
 
 // A reload must recover pending file cleanup, not lose it with component state.
-let cleanupReadError=null;const tables=[];
-const pageClient={from(table){tables.push(table);return {
+let cleanupReadError=null,capabilityError=null,capability=true;const tables=[];
+const pageClient={rpc:async name=>{assert.equal(name,'can_delete_exam_submissions');return{data:capability,error:capabilityError};},from(table){tables.push(table);return {
   select(){return this;},neq(){return this;},eq(){return this;},order(){return this;},limit(){return this;},range(){return this;},
   then(resolve){return Promise.resolve({data:table==='submission_deletions'?[{submission_id:id,submission_revision:2,pending_report_paths:[path]}]:[],error:table==='submission_deletions'?cleanupReadError:null,count:0}).then(resolve);},
 };}};
@@ -74,12 +75,14 @@ for(const testRole of ['admin','tutor']){
   role=testRole;tables.length=0;
   const output=await Page({searchParams:Promise.resolve({})});
   const children=output.props.children.flat(Infinity);const table=children.find(child=>child?.type===Table);
-  assert.equal(table.props.canDelete,role==='admin');assert.equal(tables.includes('submission_deletions'),role==='admin');
+  assert.equal(table.props.canDelete,true);assert.equal(tables.includes('submission_deletions'),true);
   const queue=children.find(child=>child?.type===Queue);
-  if(role==='admin')assert.deepEqual(queue.props.jobs,[{submission_id:id,submission_revision:2,pending_files:1}]);
-  else assert.equal(queue,undefined);
+  assert.deepEqual(queue.props.jobs,[{submission_id:id,submission_revision:2,pending_files:1}]);
 }
 role='admin';cleanupReadError={code:'42P01'};
 const unavailable=await Page({searchParams:Promise.resolve({})});
 assert.equal(unavailable.props.children.flat(Infinity).find(child=>child?.type===Table).props.canDelete,false);
-console.log('PASS: fresh grading page recovers durable cleanup jobs, hides all controls from tutors, and disables deletion with a visible migration error if capability is unavailable');
+cleanupReadError=null;capabilityError={code:'PGRST202'};
+for(const testRole of ['admin','tutor']){role=testRole;const output=await Page({searchParams:Promise.resolve({})});assert.equal(output.props.children.flat(Infinity).find(child=>child?.type===Table).props.canDelete,role==='admin','Existing admin access survives while the tutor migration is pending');}
+capabilityError=null;capability=false;const denied=await Page({searchParams:Promise.resolve({})});assert.equal(denied.props.children.flat(Infinity).find(child=>child?.type===Table).props.canDelete,false);
+console.log('PASS: grading list exposes admin/tutor deletion and cleanup, and hides delete controls when the database capability or cleanup table is unavailable');

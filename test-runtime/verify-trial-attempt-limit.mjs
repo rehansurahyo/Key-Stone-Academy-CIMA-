@@ -75,12 +75,15 @@ try {
   await denied(()=>db.query('update public.exam_sessions set exam_id=$1 where user_id=$2',[locked,other]),'42501');
   console.log('PASS: enrolled behavior and other trial accounts remain independent; attempt ownership and exam cannot be changed');
 
+  await as('');
+  await db.exec(await readFile(new URL('../supabase/migrations/20261106_tutor_submission_deletion.sql',import.meta.url),'utf8'));
+  await db.query("update public.profiles set role='tutor' where id=$1",[admin]);
   await as(admin);
   const submission=(await db.query('select id,revision from public.submissions where session_id=$1',[first])).rows[0];
   await db.query('select public.delete_exam_submission($1,$2)',[submission.id,submission.revision]);
   assert.equal((await db.query('select * from public.trial_attempt_receipts where user_id=$1',[trial])).rows.length,1);
   await as(trial);await denied(()=>start(trial),'23505');
-  console.log('PASS: admin cleanup removes the selected submission but cannot unlock a second free attempt');
+  console.log('PASS: tutor cleanup removes the selected submission but cannot unlock a second free attempt');
 
   await as(admin);
   await db.query("insert into storage.objects(bucket_id,name) values('exam-materials',$1)",[imagePath]);

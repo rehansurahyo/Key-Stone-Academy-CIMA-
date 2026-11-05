@@ -10,7 +10,9 @@ import { ReportRemovalCleanup } from "@/components/dashboard/delete-report-butto
 
 export default async function Submissions({ searchParams }: { searchParams: Promise<{ status?: string; page?: string; level?: string; q?: string }> }) {
   const { supabase, profile } = await requireStaffPage();
-  const canDelete = profile.role === "admin";
+  const capability = await supabase.rpc("can_delete_exam_submissions");
+  const canDelete = (!capability.error && capability.data === true)
+    || (profile.role === "admin" && capability.error?.code === "PGRST202");
   const cleanup = canDelete ? await supabase.from("submission_deletions")
     .select("submission_id,submission_revision,pending_report_paths").neq("pending_report_paths", "{}")
     .order("deleted_at", { ascending: false }).limit(100) : null;
@@ -51,7 +53,7 @@ export default async function Submissions({ searchParams }: { searchParams: Prom
       <button type="submit" className={primaryClass}>Search</button>{search && <Link href={link(status, 1, "")} className={secondaryClass}>Clear search</Link>}
     </form>
     <div className="mb-5 flex flex-wrap gap-2">{[["all", "All submissions"], ["submitted", "Awaiting review"], ["graded", "Graded"]].map(([value, label]) => <Link key={value} href={link(value)} className={`${secondaryClass} ${status === value ? "border-cyan-600 bg-cyan-50 text-cyan-800" : ""}`}>{label}</Link>)}</div>
-    {canDelete && !deletionReady && <Notice error message="Submission deletion is unavailable. Apply the admin submission deletion migration and reload; contact support if it is already applied." />}
+    {!deletionReady && <Notice error message="Submission deletion is unavailable. Ask an administrator to apply the latest tutor submission deletion migration, then reload; contact support if it is already applied." />}
     {deletionReady && <SubmissionCleanupQueue jobs={cleanupJobs} />}
     {reportCleanup.error ? <Notice error message="Removed report cleanup is unavailable. Please contact support." /> : <ReportRemovalCleanup jobs={reportJobs} />}
     <SubmissionTable key={`${status}:${level}:${search}:${page}`} submissions={(data ?? []) as unknown as Submission[]} canDelete={deletionReady} />

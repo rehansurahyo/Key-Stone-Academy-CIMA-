@@ -8,7 +8,7 @@ const deleteSchema = z.object({ revision: z.number().int().min(0).max(2147483647
 export async function DELETE(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     checkOrigin(request);
-    const { supabase } = await requireStaff("admin");
+    const { supabase } = await requireStaff();
     const { id } = await params;
     const parsed = deleteSchema.safeParse(await request.json().catch(() => null));
     if (!z.string().uuid().safeParse(id).success || !parsed.success) {
@@ -18,8 +18,8 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
       p_submission_id: id, p_revision: parsed.data.revision,
     });
     if (error) {
-      if (error.code === "PGRST202") throw new DashboardError("Apply the admin submission deletion SQL migration first.", 503);
-      if (error.code === "42501") throw new DashboardError("Active administrator access required.", 403);
+      if (error.code === "PGRST202") throw new DashboardError("Apply the latest submission deletion SQL migration first.", 503);
+      if (error.code === "42501") throw new DashboardError("Active administrator or tutor deletion access required. Ask an administrator to check the latest tutor deletion migration.", 403);
       if (error.code === "P0002") throw new DashboardError("Submission not found.", 404);
       if (["40001", "55P03", "40P01"].includes(error.code)) throw new DashboardError("This submission changed or is being updated. Reload and try again.", 409);
       throw new DashboardError("Unable to delete this attempt safely. No changes were saved. Please contact support.", 503);
@@ -47,7 +47,7 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
         }
       } catch {
         // The attempt is already deleted. Report the partial outcome explicitly;
-        // the admin cleanup queue remains available after a full page reload.
+        // the staff cleanup queue remains available after a full page reload.
       }
     }
     return Response.json({ deleted: true, cleanup_pending: pending > 0, pending_files: pending }, { headers: { "Cache-Control": "private, no-store" } });
