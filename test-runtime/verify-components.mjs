@@ -532,4 +532,14 @@ await test('report batch validates all files before upload and ignores a duplica
     await act(async()=>resolveUpload());assert.equal(calls.length,1);assert.equal(app.el.querySelectorAll('a').length,1);
   }finally{await app.unmount();}
 });
+await test('Archived mocks are separate, explain retained history and allow restore instead of permanent deletion',async()=>{
+  const calls=[];globalThis.fetch=async(url,options)=>{calls.push({url,method:options.method,body:JSON.parse(options.body)});return Response.json({status:'draft',revision:5,action:'restored'});};
+  const exam={...draftExam,level:'OCS',status:'archived',revision:4,attemptCount:2};
+  const app=await mount(MockExamLibrary,{exams:[exam],managementReady:true,initialLevel:'OCS',initialPage:1,archived:true});try{
+    assert.ok(app.el.textContent.includes('Existing student attempts, answers and grades remain available'));
+    const views=app.el.querySelector('[aria-label="Mock exam views"]');assert.equal([...views.querySelectorAll('a')].find(a=>a.textContent==='Archived mocks').getAttribute('aria-current'),'page');
+    assert.equal(app.el.querySelector(`[aria-label="Delete ${exam.name}"]`),null);assert.equal(app.el.querySelector(`[aria-label="Archive ${exam.name}"]`),null);
+    await click(app.el.querySelector(`[aria-label="Restore ${exam.name}"]`));assert.equal(calls.length,1);assert.equal(calls[0].method,'PATCH');assert.deepEqual(calls[0].body,{action:'restore',revision:4});
+  }finally{await app.unmount();}
+});
 await browser.happyDOM.close();if(failures.length)process.exitCode=1;

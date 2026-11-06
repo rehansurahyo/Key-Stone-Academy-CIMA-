@@ -110,10 +110,11 @@ export function MockExamLibrary({
         >{value === "all" ? "All levels" : value}</button>;
       })}
     </nav>
-    <nav aria-label="Mock exam views" className="mb-5 flex gap-2">
-      <Link href={`/dashboard/exams${level ? `?level=${level}` : ""}`} className={archived ? secondaryClass : primaryClass}>Active mocks</Link>
-      <Link href={`/dashboard/exams?view=archived${level ? `&level=${level}` : ""}`} className={archived ? primaryClass : secondaryClass}>Archived mocks</Link>
+    <nav aria-label="Mock exam views" className="mb-5 flex flex-wrap gap-2">
+      <Link href={`/dashboard/exams${level ? `?level=${level}` : ""}`} aria-current={!archived ? "page" : undefined} className={archived ? secondaryClass : primaryClass}>Active mocks</Link>
+      <Link href={`/dashboard/exams?view=archived${level ? `&level=${level}` : ""}`} aria-current={archived ? "page" : undefined} className={archived ? primaryClass : secondaryClass}>Archived mocks</Link>
     </nav>
+    {archived && <div className="mb-5"><Notice message="Archived mocks are kept separate from active papers. Existing student attempts, answers and grades remain available. Restore a mock as a draft when you need it again." /></div>}
     <div aria-live="polite" aria-atomic="true" className="sr-only">Showing {filteredExams.length} {level ? `${level} ` : ""}mock exams.</div>
     {canSetFreeMock && <p className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">Choose one published free mock per level using “Set as Free Mock”. Changes apply to new trial registrations only. Existing students keep their assigned paper and attempts.</p>}
     {notice && <div className="mb-4"><Notice message={notice} /></div>}
