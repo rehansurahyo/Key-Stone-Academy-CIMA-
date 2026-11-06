@@ -6,7 +6,7 @@ import type { Profile } from "@/lib/dashboard/types";
 import { EXAM_LEVELS, LEVEL_NAMES, parseExamLevel } from "@/lib/exam-levels";
 
 export default async function Users({ searchParams }: { searchParams: Promise<{ page?: string; q?: string; level?: string }> }) {
-  const { supabase } = await requireStaffPage("admin");
+  const { supabase, user } = await requireStaffPage("admin");
   const params = await searchParams;
   const search = typeof params.q === "string" ? params.q.trim().slice(0, 100) : "";
   const level = parseExamLevel(params.level);
@@ -30,7 +30,7 @@ export default async function Users({ searchParams }: { searchParams: Promise<{ 
       <label className="min-w-0 flex-1 basis-56 text-sm font-medium text-slate-700">Student level<select name="level" aria-label="Student level" defaultValue={level ?? ""} className={`${inputClass} mt-2`}><option value="">All levels and roles</option>{EXAM_LEVELS.map(value => <option key={value} value={value}>{value} — {LEVEL_NAMES[value]}</option>)}</select></label>
       <button type="submit" className={primaryClass}>Search</button>{(search || level) && <Link href="/dashboard/users" className={secondaryClass}>Clear filters</Link>}
     </form>
-    <UserManagement key={`${page}:${search}:${level ?? "all"}`} users={(data ?? []) as Profile[]} />
+    <UserManagement key={`${page}:${search}:${level ?? "all"}`} users={(data ?? []) as Profile[]} currentUserId={user.id} />
     <div className="mt-5 flex flex-wrap items-center justify-between gap-3 text-sm text-slate-500"><span>{count ?? 0} accounts · Page {page}</span><div className="flex gap-2">{page > 1 && <Link href={link(page - 1)} className={secondaryClass}>Previous</Link>}{page * 30 < (count ?? 0) && <Link href={link(page + 1)} className={secondaryClass}>Next</Link>}</div></div>
   </>;
 }

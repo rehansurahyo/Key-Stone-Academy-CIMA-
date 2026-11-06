@@ -31,6 +31,7 @@ const {LeadsTable}=load('components/dashboard/leads-table.tsx');
 const {SubmissionCleanupQueue}=load('components/dashboard/delete-submission-button.tsx');
 const {default:StaffLogin}=load('app/staff/login/page.tsx');
 const {UserManagement}=load('components/dashboard/user-management.tsx');
+const {deleteAccount}=load('components/dashboard/bulk-delete-accounts.tsx');
 const {DashboardShell}=load('components/dashboard/dashboard-shell.tsx');
 const {SubmissionReports}=load('components/dashboard/submission-reports.tsx');
 const {StudentMockDashboard}=load('components/student-mock-dashboard.tsx');
@@ -427,7 +428,7 @@ await test('staff login verifies server cookie before document navigation; auth/
   const app=await mount(StaffLogin);try{await submit(app.el.querySelector('form'));assert.match(app.el.querySelector('[role=alert]').textContent,/Network disconnected/);assert.equal(app.el.querySelector('button').disabled,false);}finally{await app.unmount();}
 });
 await test('account management create/edit, protected admins and cancel/confirm deletion',async()=>{
-  const calls=[];globalThis.fetch=async(url,options)=>{calls.push({url,method:options.method,body:options.body?JSON.parse(options.body):null});return new Response('{}');};
+  const calls=[];globalThis.fetch=async(url,options)=>{calls.push({url,method:options.method,body:options.body?JSON.parse(options.body):null});return Response.json(options.method==='DELETE'?{deleted:true}:{});};
   const student={id:'student-test',full_name:'Test Student',email:'test@example.invalid',role:'student',is_active:true};
   const admin={...student,id:'admin-test',full_name:'Test Admin',role:'admin'};
   const app=await mount(UserManagement,{users:[student,admin]});try{
@@ -541,5 +542,26 @@ await test('Archived mocks are separate, explain retained history and allow rest
     assert.equal(app.el.querySelector(`[aria-label="Delete ${exam.name}"]`),null);assert.equal(app.el.querySelector(`[aria-label="Archive ${exam.name}"]`),null);
     await click(app.el.querySelector(`[aria-label="Restore ${exam.name}"]`));assert.equal(calls.length,1);assert.equal(calls[0].method,'PATCH');assert.deepEqual(calls[0].body,{action:'restore',revision:4});
   }finally{await app.unmount();}
+});
+await test('bulk account selection excludes self/admins; typed confirmation, cancel, duplicate clicks and partial retries affect only selected accounts',async()=>{
+  const users=[{id:'candidate-one',full_name:'Candidate One',email:'one@example.invalid',role:'student',assigned_level:'OCS',is_active:true},{id:'candidate-two',full_name:'Candidate Two',email:'two@example.invalid',role:'student',assigned_level:'MCS',is_active:true},{id:'other-admin',full_name:'Protected Admin',role:'admin',is_active:true},{id:'self',full_name:'Own Admin',role:'admin',is_active:true}];
+  const calls=[];let mode='pending',resolveFirst;
+  globalThis.fetch=async(url,options)=>{calls.push({url,body:JSON.parse(options.body)});if(mode==='pending')return new Promise(resolve=>{resolveFirst=resolve;});return mode==='partial'?Response.json({error:'Account changed. Refresh and retry.'},{status:409}):Response.json({deleted:true});};
+  const app=await mount(UserManagement,{users,currentUserId:'self'});try{
+    assert.equal(app.el.querySelector('[aria-label="Select account Protected Admin"]').disabled,true);assert.equal(app.el.querySelector('[aria-label="Select account Own Admin"]').disabled,true);
+    await click(app.el.querySelector('input[type=checkbox]'));const open=()=>[...app.el.querySelectorAll('button')].find(b=>b.textContent==='Delete selected accounts (2)');assert.ok(open());await click(open());
+    let dialog=document.querySelector('[role=alertdialog]');assert.equal(dialog.querySelectorAll('li').length,2);assert.ok(dialog.textContent.includes('answers, submissions and grades'));
+    const confirm=()=>[...dialog.querySelectorAll('button')].find(b=>b.textContent==='Delete selected accounts permanently');assert.equal(confirm().disabled,true);
+    await change(dialog.querySelector('input'),'delete');assert.equal(confirm().disabled,true);await click([...dialog.querySelectorAll('button')].find(b=>b.textContent==='Cancel'));assert.equal(calls.length,0);
+    await click(open());dialog=document.querySelector('[role=alertdialog]');await change(dialog.querySelector('input'),'DELETE');
+    await act(async()=>{confirm().click();confirm().click();await new Promise(r=>setTimeout(r,10));});assert.equal(calls.length,1);assert.ok([...app.el.querySelectorAll('input[type=checkbox]')].every(input=>input.disabled));
+    mode='partial';await act(async()=>resolveFirst(Response.json({deleted:true})));assert.equal(calls.length,2);assert.match(dialog.querySelector('[role=alert]').textContent,/1 of 2 accounts confirmed deleted/);
+    assert.equal(app.el.querySelector('[aria-label="Select account Candidate One"]'),null);assert.equal(app.el.querySelector('[aria-label="Select account Candidate Two"]').checked,true);assert.ok(app.el.textContent.includes('Protected Admin'));assert.ok(app.el.textContent.includes('Own Admin'));
+    mode='ok';await click(confirm());assert.equal(calls.length,3);assert.ok(calls[2].url.endsWith('/candidate-two'));assert.ok(calls.every(call=>call.body.confirmation==='DELETE'&&!call.url.endsWith('/self')&&!call.url.endsWith('/other-admin')));
+    assert.equal(app.el.querySelector('[aria-label="Select account Candidate Two"]'),null);assert.ok([...app.el.querySelectorAll('button')].find(b=>b.textContent==='Delete selected accounts (0)').disabled);
+  }finally{await app.unmount();}
+});
+await test('account deletion rejects malformed success responses rather than claiming removal',async()=>{
+  globalThis.fetch=async()=>Response.json({});await assert.rejects(deleteAccount('candidate'),/not confirmed/);
 });
 await browser.happyDOM.close();if(failures.length)process.exitCode=1;

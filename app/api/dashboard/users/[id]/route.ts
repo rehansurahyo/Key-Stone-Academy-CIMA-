@@ -1,12 +1,14 @@
 import { apiError, checkOrigin, DashboardError, requireStaff } from "@/lib/dashboard/auth";
 import { updateUserSchema } from "@/lib/dashboard/validation";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { z } from "zod";
 
 async function editableUser(request: Request, id: string) {
   checkOrigin(request);
   const auth = await requireStaff("admin");
   if (id === auth.user.id) throw new DashboardError("You cannot change your own access.", 403);
-  const { data } = await auth.supabase.from("profiles").select("role").eq("id", id).single();
+  const { data, error } = await auth.supabase.from("profiles").select("role").eq("id", id).single();
+  if (error && error.code !== "PGRST116") throw new DashboardError("Unable to verify this account. Refresh and try again.", 503);
   if (!data) throw new DashboardError("Account not found.", 404);
   if (data.role === "admin") throw new DashboardError("Administrator accounts cannot be changed here.", 403);
   return auth;
@@ -28,9 +30,11 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
   try {
     const { id } = await params;
     await editableUser(request, id);
+    const confirmation = z.object({ confirmation: z.literal("DELETE") }).strict().safeParse(await request.json().catch(() => null));
+    if (!confirmation.success) throw new DashboardError("Confirm DELETE before removing an account.");
     const admin = await createAdminClient();
     const { error } = await admin.auth.admin.deleteUser(id);
     if (error) throw new DashboardError(error.message);
-    return Response.json({ deleted: true });
+    return Response.json({ deleted: true }, { headers: { "Cache-Control": "private, no-store" } });
   } catch (error) { return apiError(error); }
 }

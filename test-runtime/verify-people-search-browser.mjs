@@ -12,7 +12,7 @@ const mocks=[{id:'active',name:'Active mock QA',status:'published'},{id:'archive
 const client={rpc:async(_name,args)=>({data:(args?.p_ids??[]).map(exam_id=>({exam_id,attempt_count:2})),error:null}),from(table){let rows=table==='profiles'?[...people]:table==='exams'?[...mocks]:[],first=0,last=999;return{
   select(){return this;},eq(key,value){rows=rows.filter(row=>row[key]===value);return this;},neq(key,value){rows=rows.filter(row=>row[key]!==value);return this;},ilike(key,value){const term=value.slice(1,-1).replace(/\\([\\%_])/g,'$1').toLowerCase();rows=rows.filter(row=>String(row[key]??'').toLowerCase().includes(term));return this;},order(){return this;},range(start,end){first=start;last=end;return this;},then(resolve){return Promise.resolve({data:rows.slice(first,last+1),count:rows.length,error:null}).then(resolve);}
 };}};
-const load=loader({'next/navigation':{useRouter:()=>({refresh(){}})},'next/link':{__esModule:true,default:({href,children,...props})=>React.createElement('a',{href,...props},children)},'@/lib/dashboard/auth':{requireStaffPage:async()=>({supabase:client,profile:{role:'admin'}})}});
+const load=loader({'next/navigation':{useRouter:()=>({refresh(){}})},'next/link':{__esModule:true,default:({href,children,...props})=>React.createElement('a',{href,...props},children)},'@/lib/dashboard/auth':{requireStaffPage:async()=>({supabase:client,user:{id:'qa-admin'},profile:{role:'admin'}})}});
 const Users=load('app/dashboard/users/page.tsx').default,Exams=load('app/dashboard/exams/page.tsx').default;
 const names=await readdir('.next/static',{recursive:true}),css=(await Promise.all(names.filter(n=>n.endsWith('.css')).map(n=>readFile('.next/static/'+n,'utf8')))).join('\n');
 const server=createServer(async(request,response)=>{try{
