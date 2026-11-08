@@ -9,6 +9,7 @@ import type { Profile } from "@/lib/dashboard/types";
 import { inputClass, primaryClass, secondaryClass, Notice, sendJson } from "./shared";
 import { EXAM_LEVELS, LEVEL_NAMES } from "@/lib/exam-levels";
 import { BulkDeleteAccounts, canRemoveAccount, deleteAccount } from "./bulk-delete-accounts";
+import { InviteStudent } from "./invite-student";
 
 export function UserManagement({ users, currentUserId }: { users: Profile[]; currentUserId?: string }) {
   const [editing, setEditing] = useState<Profile | "new" | null>(null);
@@ -31,7 +32,7 @@ export function UserManagement({ users, currentUserId }: { users: Profile[]; cur
   }
   const router = useRouter();
   const existing = editing && editing !== "new" ? editing : null;
-  return <div className="space-y-5"><div className="flex justify-end"><button disabled={controlsBusy} onClick={() => { setError(""); setEditing("new"); }} className={primaryClass}><Plus className="size-4" />Add tutor or student</button></div>
+  return <div className="space-y-5"><div className="flex flex-wrap justify-end gap-3"><InviteStudent disabled={controlsBusy} /><button disabled={controlsBusy} onClick={() => { setError(""); setEditing("new"); }} className={primaryClass}><Plus className="size-4" />Add tutor or student</button></div>
     {notice && <Notice message={notice} />}
     <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white p-4">
       <label className="flex min-w-0 items-center gap-2 text-sm text-slate-600"><input type="checkbox" disabled={controlsBusy || !eligible.length} checked={Boolean(eligible.length) && chosen.length === eligible.length} onChange={event => setSelected(event.target.checked ? eligible.map(user => user.id) : [])} />Select all eligible accounts on this page</label>

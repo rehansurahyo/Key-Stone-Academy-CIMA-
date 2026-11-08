@@ -2,7 +2,14 @@
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "key-stone-academy-cima",
   "keep_vars": true,
-  "main": ".open-next/worker.js",
+  "main": "email-worker.js",
+  "triggers": { "crons": ["* * * * *"] },
+  "vars": {
+    "EMAIL_AUTOMATION_ENABLED": "false",
+    "EMAIL_SENDER": "info@keystoneacademia.com",
+    "EMAIL_REPLY_TO": "info@keystoneacademia.com",
+    "EMAIL_STUDENT_ORIGIN": "https://mocks.keystoneacademia.com"
+  },
   "compatibility_date": "2024-09-23",
   "compatibility_flags": [
     "nodejs_compat",

@@ -1,0 +1,30 @@
+import assert from 'node:assert/strict';
+import {loader} from './component-loader.mjs';
+
+const actor='00000000-0000-4000-8000-000000002101',student='00000000-0000-4000-8000-000000002102',job='00000000-0000-4000-8000-000000002103';
+let role='admin',active=true,signedIn=true,enabled=true,sqlReady=true,profileFailure=false,queueFailure=false,createCount=0,removed=0,queued=0;
+const profiles=new Map(),identities=new Map();
+const authClient={auth:{getUser:async()=>({data:{user:signedIn?{id:actor}:null},error:null})},from(){return{select(){return this;},eq(){return this;},single:async()=>({data:{id:actor,role,is_active:active},error:null})};}};
+const admin={from(table){let filters=[],updating=null,email=null;const chain={select(){return this;},eq(key,value){filters.push([key,value]);return this;},ilike(_key,value){email=value.replace(/\\([\\%_])/g,'$1');return this;},update(value){updating=value;return this;},limit:async()=>table==='portal_email_jobs'?{data:[],error:sqlReady?null:{code:'42P01'}}:{data:[...profiles.values()].filter(row=>(!email||row.email.toLowerCase()===email)&&filters.every(([key,value])=>row[key]===value)),error:null},single:async()=>{if(profileFailure)return{data:null,error:{code:'failure'}};const row=profiles.get(filters.find(([key])=>key==='id')[1]);Object.assign(row,updating);return{data:{id:row.id},error:null};},maybeSingle:async()=>({data:{state:'sent',error_code:null,updated_at:'2026-11-08',sent_at:'2026-11-08'},error:null})};return chain;},rpc:async(name,args)=>{assert.equal(name,'queue_enrolled_invitation');assert.equal(args.p_user_id,student);queued++;return queueFailure?{data:null,error:{code:'offline'}}:{data:job,error:null};},auth:{admin:{createUser:async input=>{createCount++;assert.ok(input.password.length>=64);assert.equal(input.ban_duration,'876000h');if([...identities.values()].some(identity=>identity.email===input.email))return{data:{user:null},error:{message:'exists'}};identities.set(student,{id:student,email:input.email});profiles.set(student,{id:student,email:input.email,full_name:'Initial',role:'student',access_type:'trial',is_active:true,assigned_level:'SCS'});return{data:{user:{id:student}},error:null};},getUserById:async id=>({data:{user:identities.get(id)},error:null}),updateUserById:async(id,attributes)=>{assert.equal(id,student);assert.deepEqual(attributes,{ban_duration:'none'});assert.equal(profiles.get(id).access_type,'enrolled');assert.equal(profiles.get(id).assigned_level,'OCS');return{error:null};},deleteUser:async id=>{removed++;profiles.delete(id);identities.delete(id);return{error:null};}}}};
+const load=loader({'server-only':{},'@/lib/supabase/server':{createClient:async()=>authClient},'@/lib/supabase/admin':{createAdminClient:async()=>admin},'@/lib/email/config':{emailConfig:async()=>{if(!enabled)throw new Error('Email automation is disabled.');return{};}}});
+const {POST,GET}=load('app/api/dashboard/invitations/route.ts');
+const input={email:'Learner@Example.invalid',full_name:'Synthetic Learner',assigned_level:'OCS'};
+const send=(body=input,origin='https://admin.example.test')=>POST(new Request('https://admin.example.test/api/dashboard/invitations',{method:'POST',headers:{Origin:origin,'Content-Type':'application/json'},body:JSON.stringify(body)}));
+for(const[r,a]of[['student',true],['tutor',true],['admin',false]]){role=r;active=a;assert.equal((await send()).status,403);}
+role='admin';active=true;signedIn=false;assert.equal((await send()).status,401);signedIn=true;
+assert.equal((await send(input,'https://attacker.example')).status,403);
+assert.equal((await send({...input,role:'admin'})).status,400);
+assert.equal((await send({...input,password:'should-not-be-accepted'})).status,400);
+enabled=false;assert.equal((await send()).status,503);enabled=true;
+sqlReady=false;assert.equal((await send()).status,503);sqlReady=true;assert.equal(createCount,0);
+let response=await send();assert.equal(response.status,202);let result=await response.json();assert.equal(result.queued,true);assert.equal(result.job_id,job);assert.ok(!JSON.stringify(result).includes('password_link'));assert.equal(createCount,1);assert.equal(removed,0);
+response=await send({...input,full_name:'Do not overwrite an existing learner'});assert.equal(response.status,202);assert.equal(createCount,1);assert.equal(profiles.get(student).full_name,'Synthetic Learner');
+assert.equal((await send({...input,assigned_level:'SCS'})).status,409);
+profiles.get(student).is_active=false;assert.equal((await send()).status,409);profiles.get(student).is_active=true;
+response=await GET(new Request('https://admin.example.test/api/dashboard/invitations?job='+job));assert.equal(response.status,200);assert.equal(response.headers.get('cache-control'),'private, no-store');assert.deepEqual(Object.keys(await response.json()).sort(),['error_code','sent_at','state','updated_at']);
+role='tutor';assert.equal((await GET(new Request('https://admin.example.test/api/dashboard/invitations?job='+job))).status,403);role='admin';
+profiles.clear();identities.clear();profileFailure=true;assert.equal((await send()).status,503);assert.equal(removed,1);assert.equal(profiles.size,0);profileFailure=false;
+queueFailure=true;response=await send();assert.equal(response.status,503);assert.match((await response.json()).error,/account is ready/);assert.equal(removed,1);assert.equal(profiles.size,1);queueFailure=false;
+response=await send();assert.equal(response.status,202);assert.equal(createCount,3,'Retry reuses an already provisioned account after queue failure');assert.equal(queued,4);
+console.log('PASS: active-admin/same-origin invitation API, strict student-only payload, disabled/missing SQL failures before creation, protected existing levels/logins, safe setup rollback and queue-failure retry');
+console.log('PASS: invitation responses contain no password/token; status endpoint is admin-only and exposes only safe delivery fields');

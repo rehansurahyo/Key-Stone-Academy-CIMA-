@@ -5,6 +5,7 @@ import { LearnWorldsLink } from "@/components/learnworlds-link";
 import { parseExamLevel } from "@/lib/exam-levels";
 import { studentMockCards, type StudentMock, type MockAttempt, type MockSubmission } from "@/lib/student-mocks";
 import { StudentMockDashboard } from "@/components/student-mock-dashboard";
+import { StudentResources } from "@/components/student-resources";
 import type { ExamMaterial, SubmissionReport } from "@/lib/dashboard/types";
 
 export default async function StudentDashboard({ searchParams }: { searchParams: Promise<{ level?: string; notice?: string }> }) {
@@ -32,6 +33,7 @@ export default async function StudentDashboard({ searchParams }: { searchParams:
     <header><PageHeading title="Student Dashboard" description={`Welcome, ${profile.full_name || user.email || "Student"}. Choose a mock, resume your work or review completed papers.`} action={<nav aria-label="Student portal navigation"><LearnWorldsLink /></nav>} /></header>
     {query.notice === "exam-level" && <div role="alert" className="mb-6 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">This mock is unavailable for your assigned level ({assignedLevel}). Please choose a mock from your dashboard.</div>}
     {query.notice === "trial-locked" && <div role="alert" className="mb-6 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">Your free trial includes Mock 1 only. Enrol with Keystone Academia to unlock the remaining papers.</div>}
+    {profile.access_type === "trial" && <StudentResources level={assignedLevel} />}
     <StudentMockDashboard papers={papers} submissions={feedback} reports={attachments} solutions={(solutions.data ?? []) as ExamMaterial[]} assignedLevel={assignedLevel} initialLevel={level} isTrial={profile.access_type === "trial"} />
     {[exams, submissions, attempts, reports, solutions].some(result => result.data?.length === 1000) && <p className="mt-5 text-sm text-slate-500">Showing the latest 1,000 records. Contact support for older history.</p>}
   </div></main></RoleGuard>;
