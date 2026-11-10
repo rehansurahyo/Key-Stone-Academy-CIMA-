@@ -5,7 +5,7 @@
   "main": "email-worker.js",
   "triggers": { "crons": ["* * * * *"] },
   "vars": {
-    "EMAIL_AUTOMATION_ENABLED": "false",
+    "EMAIL_AUTOMATION_ENABLED": "true",
     "EMAIL_SENDER": "info@keystoneacademia.com",
     "EMAIL_REPLY_TO": "info@keystoneacademia.com",
     "EMAIL_STUDENT_ORIGIN": "https://mocks.keystoneacademia.com"

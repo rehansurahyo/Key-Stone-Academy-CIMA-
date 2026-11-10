@@ -33,6 +33,6 @@ try{
   const env={EMAIL_AUTOMATION_ENABLED:'true',EMAIL_DISPATCH_SECRET:'x'.repeat(48)},context={};await worker.scheduled({},env,context);
   assert.equal(calls.length,1);assert.equal(calls[0].request.method,'POST');assert.equal(calls[0].request.headers.get('authorization'),'Bearer '+env.EMAIL_DISPATCH_SECRET);assert.equal(new URL(calls[0].request.url).pathname,'/api/internal/email-dispatch');assert.equal(calls[0].env,env);assert.equal(calls[0].context,context);
   const config=JSON.parse(await readFile(new URL('../wrangler.json',import.meta.url),'utf8'));assert.equal(config.main,'email-worker.js');assert.deepEqual(config.triggers.crons,['* * * * *']);
-  assert.equal(config.vars.EMAIL_AUTOMATION_ENABLED,'false','Code rollout must not enable email before runtime configuration is verified');
+  assert.equal(config.vars.EMAIL_AUTOMATION_ENABLED,'true','Approved production rollout enables the configured email worker');
   console.log('PASS: disabled-by-default config, sender/origin/encryption validation, protected dispatch including malformed bearer values and Cloudflare scheduled dispatch without any real requests');
 }finally{for(const name of names){if(saved[name]===undefined)delete process.env[name];else process.env[name]=saved[name];}delete globalThis.__emailWorkerFixture;}
