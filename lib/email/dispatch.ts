@@ -59,7 +59,9 @@ export async function dispatchEmails(admin: SupabaseClient, config: Awaited<Retu
       const idempotencyKey = await dedupeId(job.id, job.generation);
       let response: Response;
       try {
-        response = await send("https://api.brevo.com/v3/smtp/email", { method: "POST", redirect: "error", credentials: "omit", cache: "no-store", signal: AbortSignal.timeout(12_000),
+        // Workers does not support redirect: "error". Manual mode keeps the
+        // API key on this host; unexpected 3xx responses fail below.
+        response = await send("https://api.brevo.com/v3/smtp/email", { method: "POST", redirect: "manual", credentials: "omit", cache: "no-store", signal: AbortSignal.timeout(12_000),
           headers: { "api-key": config.apiKey, "Content-Type": "application/json", idempotencyKey },
           body: JSON.stringify({ sender: { name: "Keystone Academia", email: config.sender }, replyTo: { email: config.replyTo, name: "Keystone Academia" },
             to: [{ email: job.recipient, name: job.full_name }], subject: content.subject, textContent: content.text, htmlContent: content.html, headers: { idempotencyKey }, tags: [job.kind] }),
