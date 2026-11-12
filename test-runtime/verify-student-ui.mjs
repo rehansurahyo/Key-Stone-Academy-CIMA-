@@ -12,21 +12,23 @@ globalThis.requestAnimationFrame=browser.requestAnimationFrame.bind(browser);glo
 Object.defineProperty(globalThis,'navigator',{value:browser.navigator,configurable:true});globalThis.IS_REACT_ACT_ENVIRONMENT=true;
 const {createRoot}=await import('../node_modules/react-dom/client.js');
 const auth={user:{id:'local-test-student'},role:'student',candidateName:'Local Test Student',loading:false,error:null,configured:true};
-let completions=0,completionCalls=0,completionMode='ok',resolveCompletion;
+let completions=0,completionCalls=0,completionMode='ok',resolveCompletion,activeQuestionId='section-1';
+const sessionId='local-test-session';
 const sessionActivations=[];
 const client={auth:{refreshSession:async()=>({error:null})},rpc:async()=>({error:null}),from:()=>({select(){return this;},eq(){return this;},single:async()=>({data:{status:'in_progress',question_timers:{},active_question_id:null},error:null})})};
 const writes=[];globalThis.fetch=async(_url,options)=>{writes.push(JSON.parse(options.body));return new Response('{"saved":true}');};
 const load=loader({'@/hooks/useStudentAuth':{useStudentAuth:()=>auth},'@/hooks/useStudentExamSession':{useStudentExamSession:(active,examId)=>{
   React.useEffect(()=>{if(active)sessionActivations.push(examId);},[active,examId]);
   const [completed,setCompleted]=React.useState(false);
-  return{sessionId:'local-test-session',answers:{},questionTimers:{},completed,loading:false,error:null,completeSession:async()=>{completionCalls++;if(completionMode==='fail')return false;if(completionMode==='pending')await new Promise(resolve=>{resolveCompletion=resolve;});completions++;setCompleted(true);return true;},resetLocalSession:()=>setCompleted(false)};
+  return{sessionId:active?sessionId:null,activeQuestionId,answers:{},questionTimers:{},completed,loading:false,error:null,completeSession:async()=>{completionCalls++;if(completionMode==='fail')return false;if(completionMode==='pending')await new Promise(resolve=>{resolveCompletion=resolve;});completions++;setCompleted(true);return true;},resetLocalSession:()=>setCompleted(false)};
 }},'@/lib/supabase/client':{createClient:()=>client,isSupabaseConfigured:true}});
 const {default:ExamRuntime}=load('components/exam-runtime.tsx');
 const {LEGACY_EXAM_ID,questionsData}=load('lib/exam-data.ts');
 const key=`keystone-cima-exam-ui-v1-${LEGACY_EXAM_ID}-${auth.user.id}`;
+const draftKey=`keystone-cima-answer-drafts-v2:${auth.user.id}-${LEGACY_EXAM_ID}`;
 browser.localStorage.setItem(key,JSON.stringify({flow:'exam',questionIndex:0,screen:'prompt'}));
 const el=document.createElement('div');document.body.append(el);let root=createRoot(el);
-async function render(){await act(async()=>{root.render(React.createElement(ExamRuntime,{}));await new Promise(r=>setTimeout(r,10));});}
+async function render(){await act(async()=>{root.render(React.createElement(ExamRuntime,{resumeAttempt:true}));await new Promise(r=>setTimeout(r,10));});}
 async function click(button){assert.ok(button,'Button exists');await act(async()=>{button.dispatchEvent(new MouseEvent('mousedown',{bubbles:true,button:0}));button.click();await new Promise(r=>setTimeout(r,10));});}
 const button=(scope,text)=>[...scope.querySelectorAll('button')].find(b=>b.textContent.trim()===text);
 const failures=[];
@@ -45,7 +47,7 @@ await test('real Tiptap typing persists local recovery draft, toolbar formats te
   const editor=el.querySelector('.tiptap');
   const paragraph=document.createElement('p');paragraph.textContent='Student verification answer';
   await act(async()=>{editor.append(paragraph);await new Promise(r=>setTimeout(r,40));});
-  const drafts=JSON.parse(browser.localStorage.getItem(`keystone-cima-answer-drafts-v1:${auth.user.id}-${LEGACY_EXAM_ID}`));
+  const {answers:drafts}=JSON.parse(browser.localStorage.getItem(draftKey));
   assert.ok(drafts['section-1'].includes('Student verification answer'));
   await click(el.querySelector('[aria-label="Bold"]'));
   await click([...el.querySelectorAll('footer button')].find(b=>b.textContent.includes('Previous')));assert.ok(el.textContent.includes('You receive the following email'));
@@ -70,7 +72,7 @@ await test('failed autosave remains a visible warning without disabling typing; 
     const warning=el.querySelector('[aria-label="Progress save warning"]');assert.ok(warning);assert.equal(warning.getAttribute('role'),'alert');
     assert.ok(warning.textContent.includes('Save failed: Connection interrupted'));assert.ok(warning.textContent.includes('have not synced yet'));
     assert.equal(el.querySelector('.tiptap').getAttribute('contenteditable'),'true');assertQuietAutosave();
-    assert.ok(JSON.parse(browser.localStorage.getItem(`keystone-cima-answer-drafts-v1:${auth.user.id}-${LEGACY_EXAM_ID}`))['section-1'].includes('Recovery proof'));
+    assert.ok(JSON.parse(browser.localStorage.getItem(draftKey)).answers['section-1'].includes('Recovery proof'));
     await writeFile('outputs/quiet-autosave/error.html',el.outerHTML);
     globalThis.fetch=previousFetch;
     await act(async()=>{window.dispatchEvent(new Event('online'));await new Promise(r=>setTimeout(r,30));});
@@ -97,7 +99,7 @@ await test('timer sync errors stay visible even on the prompt screen, then clear
 await test('Tiptap table grid inserts a 2-by-2 table and includes it in the recovery draft',async()=>{
   await click(button(el,'Table'));await click(el.querySelector('[aria-label="2 columns by 2 rows"]'));
   const table=el.querySelector('.tiptap table');assert.ok(table);assert.equal(table.querySelectorAll('tr').length,2);assert.equal(table.querySelectorAll('td,th').length,4);
-  const drafts=JSON.parse(browser.localStorage.getItem(`keystone-cima-answer-drafts-v1:${auth.user.id}-${LEGACY_EXAM_ID}`));assert.ok(drafts['section-1'].includes('<table'));
+  const {answers:drafts}=JSON.parse(browser.localStorage.getItem(draftKey));assert.ok(drafts['section-1'].includes('<table'));
 });
 await test('reference and preseen open simultaneously, allow text selection, and drag independently',async()=>{
   await click(button(el,'Reference Material'));await click(button(el,'Pre-seen'));
@@ -163,10 +165,12 @@ await test('manual submission requires confirmation, completes session and remov
 });
 await test('zero-time failed submission locks typing AND formatting controls without claiming success',async()=>{
   await act(async()=>root.unmount());browser.localStorage.setItem(key,JSON.stringify({flow:'exam',questionIndex:2,screen:'answer'}));
+  activeQuestionId='section-3';
   client.from=()=>({select(){return this;},eq(){return this;},single:async()=>({data:{status:'in_progress',active_question_id:'section-3',question_timers:{'section-3':{remaining_seconds:0,synced_at:new Date().toISOString()}}},error:null})});
   globalThis.fetch=async()=>{throw new TypeError('Offline at time up');};root=createRoot(el);await render();await act(async()=>new Promise(r=>setTimeout(r,1200)));
   assert.equal(el.querySelector('.tiptap').getAttribute('contenteditable'),'false');assert.equal(el.querySelector('fieldset[aria-label="Response formatting"]').disabled,true);assert.ok(el.textContent.includes('Save failed:'));
   assert.equal(completions,1,'Failed flush must not mark another completion');
+  activeQuestionId='section-1';
 });
 await test('custom three-subtask marks render in both prompt and response requirements without affecting editing',async()=>{
   await act(async()=>root.unmount());
@@ -175,7 +179,7 @@ await test('custom three-subtask marks render in both prompt and response requir
   client.from=()=>({select(){return this;},eq(){return this;},single:async()=>({data:{status:'in_progress',active_question_id:null,question_timers:{}},error:null})});
   globalThis.fetch=async()=>new Response('{"saved":true}');
   const question={...questionsData[0],weightageUnit:'marks',subtasks:[{description:'Custom strategy task',weightage:10},{description:'Custom funding task',weightage:20},{description:'Custom risk task',weightage:7.5}]};
-  root=createRoot(el);await act(async()=>{root.render(React.createElement(ExamRuntime,{examId,initialQuestions:[question]}));await new Promise(r=>setTimeout(r,20));});
+  root=createRoot(el);await act(async()=>{root.render(React.createElement(ExamRuntime,{examId,resumeAttempt:true,initialQuestions:[question]}));await new Promise(r=>setTimeout(r,20));});
   assert.ok(el.textContent.includes('Custom risk task'));assert.ok(el.textContent.includes('[sub task (c) = 7.5 marks]'));
   await click([...el.querySelectorAll('footer button')].find(b=>b.textContent.includes('Next')));
   const requirements=el.querySelector('[aria-label="Section 1 task requirements"]');
@@ -195,12 +199,12 @@ await test('OCS and MCS pre-seen viewers use their current exam level',async()=>
   const examId='00000000-0000-4000-8000-000000000014';
   const question={...questionsData[0],timeMinutes:30};
   browser.localStorage.setItem(`keystone-cima-exam-ui-v1-${examId}-${auth.user.id}`,JSON.stringify({flow:'exam',questionIndex:0,screen:'prompt'}));
-  root=createRoot(el);await act(async()=>{root.render(React.createElement(ExamRuntime,{examId,examName:'Operational Case Study — Mock 2',examLevel:'OCS',initialQuestions:[question]}));await new Promise(r=>setTimeout(r,20));});
+  root=createRoot(el);await act(async()=>{root.render(React.createElement(ExamRuntime,{examId,resumeAttempt:true,examName:'Operational Case Study — Mock 2',examLevel:'OCS',initialQuestions:[question]}));await new Promise(r=>setTimeout(r,20));});
   await click(button(el,'Pre-seen'));assert.ok(el.textContent.includes('Operational Case Study Examination'),'Pre-seen viewer uses the OCS title');
   await act(async()=>root.unmount());
   const mcsExamId='00000000-0000-4000-8000-000000000015';
   browser.localStorage.setItem(`keystone-cima-exam-ui-v1-${mcsExamId}-${auth.user.id}`,JSON.stringify({flow:'exam',questionIndex:0,screen:'prompt'}));
-  root=createRoot(el);await act(async()=>{root.render(React.createElement(ExamRuntime,{examId:mcsExamId,examName:'Management Case Study — Mock 1',examLevel:'MCS',initialQuestions:[question]}));await new Promise(r=>setTimeout(r,20));});
+  root=createRoot(el);await act(async()=>{root.render(React.createElement(ExamRuntime,{examId:mcsExamId,resumeAttempt:true,examName:'Management Case Study — Mock 1',examLevel:'MCS',initialQuestions:[question]}));await new Promise(r=>setTimeout(r,20));});
   await click(button(el,'Pre-seen'));
   assert.ok(el.textContent.includes('Management Case Study Examination'),'Pre-seen viewer uses the MCS title');
 });
@@ -211,6 +215,7 @@ await test('a new trial confirms Go ahead or Go back before activating the exam;
   root=createRoot(el);
   await act(async()=>{root.render(React.createElement(ExamRuntime,{examId:trialExam,isTrial:true,initialQuestions:[questionsData[0]]}));await new Promise(r=>setTimeout(r,20));});
   const before=sessionActivations.length;
+  await click(el.querySelector('#welcome-next-button'));
   await click(el.querySelector('#structure-next-button'));
   let dialog=document.querySelector('[role=alertdialog]');assert.ok(dialog.textContent.includes('one free-trial attempt'));
   await mkdir('outputs/trial-start',{recursive:true});await writeFile('outputs/trial-start/dialog.html',document.body.innerHTML);
@@ -220,8 +225,8 @@ await test('a new trial confirms Go ahead or Go back before activating the exam;
   await click(button(dialog,'Go ahead'));assert.equal(sessionActivations.at(-1),trialExam);assert.ok(el.textContent.includes('TIME REMAINING'));
   await act(async()=>root.unmount());
   browser.localStorage.setItem(`keystone-cima-exam-ui-v1-${trialExam}-${auth.user.id}`,JSON.stringify({flow:'structure',questionIndex:0,screen:'prompt'}));
-  root=createRoot(el);await act(async()=>{root.render(React.createElement(ExamRuntime,{examId:trialExam,isTrial:true,trialAttemptStarted:true,initialQuestions:[questionsData[0]]}));await new Promise(r=>setTimeout(r,20));});
-  await click(el.querySelector('#structure-next-button'));assert.equal(document.querySelector('[role=alertdialog]'),null);assert.ok(el.textContent.includes('TIME REMAINING'));
+  root=createRoot(el);await act(async()=>{root.render(React.createElement(ExamRuntime,{examId:trialExam,isTrial:true,trialAttemptStarted:true,resumeAttempt:true,initialQuestions:[questionsData[0]]}));await new Promise(r=>setTimeout(r,20));});
+  assert.equal(document.querySelector('[role=alertdialog]'),null);assert.ok(el.textContent.includes('TIME REMAINING'));
 });
 await test('students can switch between every uploaded pre-seen and reference document without losing their answer',async()=>{
   await act(async()=>root.unmount());
@@ -229,7 +234,7 @@ await test('students can switch between every uploaded pre-seen and reference do
   client.storage={from:()=>({createSignedUrl:async path=>({data:{signedUrl:'https://materials.example.test/'+path},error:null})})};
   const materials=[['pre-a','preseen','first.pdf'],['pre-b','preseen','second.pdf'],['ref-a','reference','chart.png'],['ref-b','reference','table.jpg']].map(([id,kind,name])=>({id,exam_id:examId,name,kind,storage_path:'qa/'+name,question_id:kind==='reference'?'section-1':null}));
   browser.localStorage.setItem(`keystone-cima-exam-ui-v1-${examId}-${auth.user.id}`,JSON.stringify({flow:'exam',questionIndex:0,screen:'answer'}));
-  root=createRoot(el);await act(async()=>{root.render(React.createElement(ExamRuntime,{examId,examLevel:'MCS',materials,initialQuestions:[questionsData[0]]}));await new Promise(r=>setTimeout(r,20));});
+  root=createRoot(el);await act(async()=>{root.render(React.createElement(ExamRuntime,{examId,resumeAttempt:true,examLevel:'MCS',materials,initialQuestions:[questionsData[0]]}));await new Promise(r=>setTimeout(r,20));});
   try{
     const answer=el.querySelector('.tiptap').textContent;await click(button(el,'Pre-seen'));
     const tabs=el.querySelector('[aria-label="Pre-seen documents"]');assert.ok(tabs);assert.equal(tabs.querySelectorAll('button').length,2);

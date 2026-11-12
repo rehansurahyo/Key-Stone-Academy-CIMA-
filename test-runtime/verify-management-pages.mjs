@@ -23,7 +23,7 @@ assert.equal(landing.type,StudentDashboard,'Students can land on /dashboard with
 console.log('PASS: shared /dashboard landing renders the student dashboard for student accounts');
 for(const availability of ['published','draft','archived']){
   status=availability;ownAttempt=true;runtimeProps=null;
-  const html=renderToStaticMarkup(await ExamPage({params}));assert.ok(html.includes('Existing exam runtime'));assert.equal(runtimeProps.examId,examId);assert.equal(runtimeProps.initialQuestions[0].subject,'Original subject');
+  const html=renderToStaticMarkup(await ExamPage({params}));assert.ok(html.includes('Existing exam runtime'));assert.equal(runtimeProps.examId,examId);assert.equal(runtimeProps.resumeAttempt,true);assert.equal(runtimeProps.initialQuestions[0].subject,'Original subject');
 }
 status='archived';ownAttempt=false;runtimeProps=null;assert.ok(renderToStaticMarkup(await ExamPage({params})).includes('no longer accepting new attempts'));assert.equal(runtimeProps,null);
 visible=false;await assert.rejects(ExamPage({params}),/REDIRECT:\/dashboard\?notice=exam-level/);visible=true;
@@ -36,8 +36,8 @@ accessType='trial';trialExamId='another-paper';runtimeProps=null;
 await assert.rejects(ExamPage({params}),/REDIRECT:\/dashboard\?notice=trial-locked/);
 assert.equal(runtimeProps,null,'Locked trial paper never reaches the exam runtime');
 trialExamId=examId;assert.ok(renderToStaticMarkup(await ExamPage({params})).includes('Existing exam runtime'));
-assert.equal(runtimeProps.isTrial,true);assert.equal(runtimeProps.trialAttemptStarted,false);
-ownAttempt=true;renderToStaticMarkup(await ExamPage({params}));assert.equal(runtimeProps.trialAttemptStarted,true);
+assert.equal(runtimeProps.isTrial,true);assert.equal(runtimeProps.trialAttemptStarted,false);assert.equal(runtimeProps.resumeAttempt,false);
+ownAttempt=true;renderToStaticMarkup(await ExamPage({params}));assert.equal(runtimeProps.trialAttemptStarted,true);assert.equal(runtimeProps.resumeAttempt,true);
 attemptStatus='completed';runtimeProps=null;
 assert.ok(renderToStaticMarkup(await ExamPage({params})).includes('Only one attempt is available'));assert.equal(runtimeProps,null);
 attemptStatus='in_progress';

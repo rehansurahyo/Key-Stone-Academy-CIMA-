@@ -83,6 +83,29 @@ const BASE_UI_STATE_KEY = "keystone-cima-exam-ui-v1";
 const baseAnswerDraftsKey = (userId: string) =>
   `keystone-cima-answer-drafts-v1:${userId}`;
 
+type SavedExamPosition = {
+  sessionId?: string;
+  flow?: string;
+  questionIndex?: number;
+  screen?: "prompt" | "answer";
+};
+
+function readExamStorage<T>(key: string): T | null {
+  try {
+    return JSON.parse(window.localStorage.getItem(key) ?? "null") as T | null;
+  } catch {
+    return null;
+  }
+}
+
+function saveExamStorage(key: string, value: object) {
+  try {
+    window.localStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    // The exam can still use the server when browser storage is unavailable.
+  }
+}
+
 // Dynamic questions array: strictly matches Keystone Mock 3 SCS PDF (supports 3 or 4 sections dynamically)
 
 const rates = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 12, 15, 20, 25, 30];
@@ -1421,6 +1444,7 @@ export default function ExamRuntime({
   materials = [],
   isTrial = false,
   trialAttemptStarted = false,
+  resumeAttempt = false,
 }: {
   initialQuestions?: Question[];
   examId?: string;
@@ -1429,6 +1453,7 @@ export default function ExamRuntime({
   materials?: ExamMaterial[];
   isTrial?: boolean;
   trialAttemptStarted?: boolean;
+  resumeAttempt?: boolean;
 }) {
   // Configurable sections (supports 3 or 4 sections dynamically)
   const [sections] = useState<Question[]>(initialQuestions);
@@ -1437,7 +1462,8 @@ export default function ExamRuntime({
   const resolvedExamLevel = examLevel ?? (examId === LEGACY_EXAM_ID ? "SCS" : undefined);
   const [flow, setFlow] = useState<
     "welcome" | "structure" | "exam" | "thankyou"
-  >("welcome");
+  >(resumeAttempt ? "exam" : "welcome");
+  const [startRequested, setStartRequested] = useState(false);
   const [questionIndex, setQuestionIndex] = useState(0);
   const [screen, setScreen] = useState<"prompt" | "answer">("prompt");
   const [answers, setAnswers] = useState<Record<string, string>>({});
@@ -1447,7 +1473,7 @@ export default function ExamRuntime({
   const leavingRef = useRef(false);
   const exitInFlight = useRef(false);
   const [exitError, setExitError] = useState<string | null>(null);
-  const [uiStateHydrated, setUiStateHydrated] = useState(false);
+  const [restoredSessionId, setRestoredSessionId] = useState<string | null>(null);
   const [calculator, setCalculator] = useState(false);
   const [scratch, setScratch] = useState(false);
   const [references, setReferences] = useState(false);
@@ -1462,94 +1488,59 @@ export default function ExamRuntime({
   const question = sections[questionIndex] || sections[0];
   const questionId = `section-${question.section}`;
   const studentAuth = useStudentAuth();
-  const EXAM_UI_STATE_KEY = `${BASE_UI_STATE_KEY}-${examId}-${studentAuth.user?.id ?? "anonymous"}`;
-  const answerDraftsKey = useCallback((userId: string) => `${baseAnswerDraftsKey(userId)}-${examId}`, [examId]);
+  const userId = studentAuth.user?.id;
+  const legacyPositionKey = `${BASE_UI_STATE_KEY}-${examId}-${userId}`;
+  const positionKey = `keystone-cima-exam-ui-v2-${examId}-${userId}`;
+  const draftKey = `keystone-cima-answer-drafts-v2:${userId}-${examId}`;
   const examSession = useStudentExamSession(
-    flow === "exam" && Boolean(studentAuth.user),
+    flow === "exam" && Boolean(userId),
     examId,
     sections[0].timeMinutes * 60,
     isTrial,
+    startRequested,
   );
+  const { sessionId, activeQuestionId, answers: savedAnswers, completed } = examSession;
+  const attemptReady = sessionId !== null && restoredSessionId === sessionId;
 
   useEffect(() => {
-    if (studentAuth.loading) return;
-    if (!studentAuth.user) {
-      setUiStateHydrated(true);
-      return;
-    }
+    if (!userId || !sessionId || completed || restoredSessionId === sessionId) return;
+    const serverIndex = sections.findIndex(section => `section-${section.section}` === activeQuestionId);
+    const stored = readExamStorage<SavedExamPosition>(positionKey);
+    const cachedIndex = stored?.sessionId === sessionId &&
+      typeof stored.questionIndex === "number" && Number.isInteger(stored.questionIndex) &&
+      stored.questionIndex >= 0 && stored.questionIndex < sections.length ? stored.questionIndex : -1;
+    const index = Math.max(0, serverIndex, cachedIndex);
+    const legacy = readExamStorage<SavedExamPosition>(legacyPositionKey);
+    const legacyMatches = serverIndex >= 0 && legacy?.flow === "exam" && legacy.questionIndex === serverIndex;
+    const savedScreen = cachedIndex === index ? stored?.screen : legacyMatches && serverIndex === index ? legacy.screen : null;
 
-    try {
-      const stored = window.localStorage.getItem(EXAM_UI_STATE_KEY);
-      if (stored) {
-        const parsed = JSON.parse(stored) as {
-          flow?: unknown;
-          questionIndex?: unknown;
-          screen?: unknown;
-        };
-        if (
-          parsed.flow === "welcome" ||
-          parsed.flow === "structure" ||
-          parsed.flow === "exam" ||
-          parsed.flow === "thankyou"
-        ) {
-          setFlow(parsed.flow);
-        }
-        if (
-          typeof parsed.questionIndex === "number" &&
-          Number.isInteger(parsed.questionIndex) &&
-          parsed.questionIndex >= 0 &&
-          parsed.questionIndex < sections.length
-        ) {
-          setQuestionIndex(parsed.questionIndex);
-        }
-        if (parsed.screen === "prompt" || parsed.screen === "answer") {
-          setScreen(parsed.screen);
-        }
-      }
-    } catch {
-      window.localStorage.removeItem(EXAM_UI_STATE_KEY);
-    } finally {
-      setUiStateHydrated(true);
-    }
-  }, [sections.length, studentAuth.loading, studentAuth.user]);
+    const draft = readExamStorage<{ sessionId: string; answers: Record<string, string> }>(draftKey);
+    const legacyDraftKey = baseAnswerDraftsKey(userId);
+    const legacyDrafts = legacyMatches && draft?.sessionId !== sessionId
+      ? readExamStorage<Record<string, string>>(`${legacyDraftKey}-${examId}`) ??
+        (examId === LEGACY_EXAM_ID ? readExamStorage<Record<string, string>>(legacyDraftKey) : null)
+      : null;
+    const legacyAnswer = activeQuestionId ? legacyDrafts?.[activeQuestionId] : null;
+    const recoveredAnswers = { ...savedAnswers, ...(draft?.sessionId === sessionId ? draft.answers : {}) };
+    if (activeQuestionId && typeof legacyAnswer === "string") recoveredAnswers[activeQuestionId] = legacyAnswer;
+
+    // Restore browser-only state once Supabase has identified the attempt.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setQuestionIndex(index);
+    setScreen(savedScreen === "answer" ? "answer" : "prompt");
+    setAnswers(recoveredAnswers);
+    setRestoredSessionId(sessionId);
+  }, [activeQuestionId, completed, draftKey, examId, legacyPositionKey, positionKey, restoredSessionId, savedAnswers, sections, sessionId, userId]);
 
   useEffect(() => {
-    if (!uiStateHydrated || !studentAuth.user) return;
-    window.localStorage.setItem(
-      EXAM_UI_STATE_KEY,
-      JSON.stringify({ flow, questionIndex, screen }),
-    );
-  }, [flow, questionIndex, screen, studentAuth.user, uiStateHydrated]);
+    if (!attemptReady || completed) return;
+    saveExamStorage(positionKey, { sessionId, questionIndex, screen });
+  }, [attemptReady, completed, positionKey, questionIndex, screen, sessionId]);
 
   useEffect(() => {
-    if (!studentAuth.user) return;
-    try {
-      const stored = window.localStorage.getItem(
-        answerDraftsKey(studentAuth.user.id),
-      ) ?? (examId === LEGACY_EXAM_ID
-        ? window.localStorage.getItem(baseAnswerDraftsKey(studentAuth.user.id))
-        : null);
-      if (!stored) return;
-      const drafts = JSON.parse(stored) as Record<string, string>;
-      setAnswers((current) => ({ ...drafts, ...current }));
-    } catch {
-      window.localStorage.removeItem(answerDraftsKey(studentAuth.user.id));
-    }
-  }, [studentAuth.user]);
-
-  useEffect(() => {
-    if (!studentAuth.user || Object.keys(answers).length === 0) return;
-    window.localStorage.setItem(
-      answerDraftsKey(studentAuth.user.id),
-      JSON.stringify(answers),
-    );
-  }, [answers, studentAuth.user]);
-
-  useEffect(() => {
-    if (Object.keys(examSession.answers).length === 0) return;
-    // A newer recovery draft must win over a slower server hydration response.
-    setAnswers((current) => ({ ...examSession.answers, ...current }));
-  }, [examSession.answers]);
+    if (!attemptReady || completed) return;
+    saveExamStorage(draftKey, { sessionId, answers });
+  }, [answers, attemptReady, completed, draftKey, sessionId]);
 
   const initialContent = useMemo(() => {
     if (answers[questionId]) return answers[questionId];
@@ -1566,6 +1557,7 @@ export default function ExamRuntime({
     answerText: initialContent,
     enabled:
       flow === "exam" &&
+      attemptReady &&
       screen === "answer" &&
       !submitting &&
       !examSession.completed,
@@ -1642,9 +1634,9 @@ export default function ExamRuntime({
     questionId,
     active:
       flow === "exam" &&
+      attemptReady &&
       !examSession.loading &&
       !examSession.completed &&
-      (!isTrial || Boolean(examSession.sessionId)) &&
       !exiting &&
       !submitting &&
       !transitioning,
@@ -1789,12 +1781,22 @@ export default function ExamRuntime({
     );
   }
 
-  if (!uiStateHydrated) {
+  if (flow === "exam" && !attemptReady && !examSession.completed) {
     return (
       <main className="grid min-h-screen place-items-center bg-[#eef2f6]">
-        <div className="text-center text-[#0067A3]">
-          <div className="mx-auto size-10 animate-spin rounded-full border-4 border-[#b9c9d7] border-t-[#0067A3]" />
-          <p className="mt-3 text-[13px] font-semibold">Restoring exam screen...</p>
+        <div className="max-w-md px-6 text-center text-[#0067A3]">
+          {examSession.error && !examSession.loading ? (
+            <>
+              <p role="alert" className="text-sm text-red-700">{examSession.error}</p>
+              <button type="button" className="mr-4 mt-4 font-semibold underline" onClick={() => void examSession.initialize()}>Retry</button>
+              <a href="/dashboard" className="font-semibold underline">Return to dashboard</a>
+            </>
+          ) : (
+            <>
+              <div className="mx-auto size-10 animate-spin rounded-full border-4 border-[#b9c9d7] border-t-[#0067A3]" />
+              <p role="status" className="mt-3 text-[13px] font-semibold">{startRequested ? "Starting exam..." : "Restoring exam session..."}</p>
+            </>
+          )}
         </div>
       </main>
     );
@@ -1821,9 +1823,8 @@ export default function ExamRuntime({
             setConfirmTrialStart(true);
             return;
           }
+          setStartRequested(true);
           setFlow("exam");
-          setQuestionIndex(0);
-          setScreen("prompt");
         }}
         sections={sections}
         examName={examName}
@@ -1831,8 +1832,7 @@ export default function ExamRuntime({
       />
       <TrialStartConfirmation open={confirmTrialStart} onOpenChange={setConfirmTrialStart} onConfirm={() => {
         setConfirmTrialStart(false);
-        setQuestionIndex(0);
-        setScreen("prompt");
+        setStartRequested(true);
         setFlow("exam");
       }} />
       </>
@@ -2011,17 +2011,12 @@ export default function ExamRuntime({
                         ...values,
                         [questionId]: html,
                       };
-                      if (studentAuth.user) {
-                        window.localStorage.setItem(
-                          answerDraftsKey(studentAuth.user.id),
-                          JSON.stringify(nextAnswers),
-                        );
-                      }
+                      saveExamStorage(draftKey, { sessionId, answers: nextAnswers });
                       return nextAnswers;
                     })
                   }
                   editable={
-                    seconds > 0 && !submitting && !exiting && !examSession.completed && (!isTrial || Boolean(examSession.sessionId))
+                    seconds > 0 && !submitting && !exiting && !examSession.completed
                   }
                 />
               </div>
