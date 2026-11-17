@@ -30,7 +30,13 @@ export default async function StudentDashboard({ searchParams }: { searchParams:
   // The exam shell intentionally locks document scrolling. This dashboard must
   // own a viewport-bounded scroll area so long submission lists stay reachable.
   return <RoleGuard role={profile.role} userId={user.id} allowedRoles={["student"]}><main aria-label="Student dashboard" tabIndex={0} className="h-dvh overflow-x-hidden overflow-y-auto overscroll-y-contain bg-slate-50 px-6 py-10" style={{ scrollbarGutter: "stable" }}><div className="mx-auto max-w-6xl">
-    <header><PageHeading title="Student Dashboard" description={`Welcome, ${profile.full_name || user.email || "Student"}. Choose a mock, resume your work or review completed papers.`} action={<nav aria-label="Student portal navigation"><LearnWorldsLink /></nav>} /></header>
+    <header><PageHeading title="Student Dashboard" description={`Welcome, ${profile.full_name || user.email || "Student"}. Choose a mock, resume your work or review completed papers.`} action={<nav aria-label="Student portal navigation" className="flex flex-wrap items-center gap-3">
+      <LearnWorldsLink />
+      <a href="https://www.trustpilot.com/review/keystoneacademia.com" target="_blank" rel="noopener noreferrer" aria-label="Review us on Trustpilot (opens in a new tab)" className="inline-flex min-h-11 items-center justify-center gap-2.5 rounded-lg border border-emerald-200 bg-white px-4 py-2.5 text-sm font-semibold text-[#0B2545] shadow-sm transition hover:border-emerald-400 hover:bg-emerald-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-600">
+        <span aria-hidden="true" className="text-2xl leading-none text-[#00B67A]">★</span>
+        <span>Review us on <span className="font-bold">Trustpilot</span></span>
+      </a>
+    </nav>} /></header>
     {query.notice === "exam-level" && <div role="alert" className="mb-6 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">This mock is unavailable for your assigned level ({assignedLevel}). Please choose a mock from your dashboard.</div>}
     {query.notice === "trial-locked" && <div role="alert" className="mb-6 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">Your free trial includes Mock 1 only. Enrol with Keystone Academia to unlock the remaining papers.</div>}
     {profile.access_type === "trial" && <StudentResources level={assignedLevel} />}
