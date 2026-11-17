@@ -15,5 +15,21 @@ assert.ok(html.includes('Search by student name'));assert.ok(html.includes('q=Jo
 assert.ok(html.includes('name="level" value="OCS"'));assert.ok(!html.includes('name="page"'),'A new search resets pagination');
 calls.length=0;await Page({searchParams:Promise.resolve({q:'_%\\'})});assert.deepEqual(calls.find(call=>call.table==='submissions').search,['student.full_name','%\\_\\%\\\\%']);
 calls.length=0;await Page({searchParams:Promise.resolve({})});const all=calls.find(call=>call.table==='submissions');assert.equal(all.search,undefined);assert.ok(!all.select.includes('fkey!inner'));
+calls.length=0;
+const trialHtml=renderToStaticMarkup(await Page({searchParams:Promise.resolve({access:'trial',level:'MCS',status:'graded',q:'Josh',page:'2'})}));
+const trialQueries=calls.filter(call=>call.table==='submissions');
+assert.equal(trialQueries.length,4);
+assert.ok(trialQueries[0].select.includes('fkey!inner'));
+assert.deepEqual(trialQueries[0].equal,[['exam.level','MCS'],['student.access_type','trial'],['status','graded']]);
+assert.deepEqual(trialQueries[0].range,[20,39]);
+for(const [index,level] of ['OCS','MCS','SCS'].entries()) {
+  assert.deepEqual(trialQueries[index+1].equal,[['student.access_type','trial'],['exam.level',level]]);
+  assert.equal(trialQueries[index+1].range,undefined);
+  assert.equal(trialQueries[index+1].search,undefined);
+}
+assert.ok(trialHtml.includes('Free trials submitted'));
+assert.ok(trialHtml.includes('name="access" value="trial"'));
+assert.ok(trialHtml.includes('access=trial'));
+assert.ok(trialHtml.includes('page=3'));
 failure=new Error('query unavailable');await assert.rejects(Page({searchParams:Promise.resolve({q:'Josh'})}),/query unavailable/);
 console.log('PASS: name search filters before pagination, escapes literal wildcards and retains level/status/search in navigation');
