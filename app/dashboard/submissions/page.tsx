@@ -7,6 +7,7 @@ import type { Submission } from "@/lib/dashboard/types";
 import { LevelTabs } from "@/components/dashboard/level-tabs";
 import { EXAM_LEVELS, parseExamLevel } from "@/lib/exam-levels";
 import { ReportRemovalCleanup } from "@/components/dashboard/delete-report-button";
+import { ExportSubmissionsButton } from "@/components/dashboard/export-submissions-button";
 
 export default async function Submissions({ searchParams }: { searchParams: Promise<{ status?: string; page?: string; level?: string; q?: string; access?: string }> }) {
   const { supabase, profile } = await requireStaffPage();
@@ -62,7 +63,7 @@ export default async function Submissions({ searchParams }: { searchParams: Prom
     return `/dashboard/submissions?${params}`;
   };
   return <>
-    <PageHeading title="Answer grading" description="Review completed case study papers and provide written feedback." />
+    <PageHeading title="Answer grading" description="Review completed case study papers and provide written feedback." action={<ExportSubmissionsButton />} />
     <section aria-label="Submitted free trials by level" className="mb-6">
       <h2 className="mb-2 text-sm font-semibold text-slate-700">Free trials submitted</h2>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">{trialCounts.map(item => <Link key={item.level} href={accessLink("trial", item.level)} className="rounded-xl border border-slate-200 bg-white p-4"><span className="text-sm text-slate-600">{item.level}</span><span className="mt-1 block text-2xl font-semibold tabular-nums text-[#0B2545]">{item.count}</span></Link>)}</div>
